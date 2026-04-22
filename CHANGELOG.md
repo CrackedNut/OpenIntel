@@ -5,10 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.8.2] - 2026-04-22
+
+### Breaking
+- **Minimum Node.js bumped from 18 to 20.** Required by `@hono/node-server@2`. Node 18 has been past end-of-life since April 2025, so most installs are already on 20+. (#335)
 
 ### Fixed
-- **Plain reply could no longer resume a paused session after bot restart** — when the bot restarted more than 2× `sessionTimeoutMinutes` after a session's last activity, `cleanStale()` soft-deleted the paused record. The reply-resume path used `load()` (which hides soft-deleted sessions), so a user reply in the thread promised by the timeout message (`send a new message to continue`) fell through to the `Mention me with your request` branch and a subsequent @mention started a fresh session, losing thread context. The 🔄 reaction path never had this problem because it reads raw data via `findByPostId`. The two resume paths now share the same visibility into the 3-day history window.
+- **Plain reply could no longer resume a paused session after bot restart** — when the bot restarted more than 2× `sessionTimeoutMinutes` after a session's last activity, `cleanStale()` soft-deleted the paused record. The reply-resume path used `load()` (which hides soft-deleted sessions), so a user reply in the thread promised by the timeout message (`send a new message to continue`) fell through to the `Mention me with your request` branch and a subsequent @mention started a fresh session, losing thread context. The 🔄 reaction path never had this problem because it reads raw data via `findByPostId`. The two resume paths now share the same visibility into the 3-day history window. (#336, thanks @shaders)
+- **Flaky `MAX_SESSIONS Limit` integration test** — the Mattermost docker container in CI throws transient 500s on `/posts` that trigger ~1.5s of retry backoff per call. Six sequential session starts under that overhead pushed at least one `waitForSessionActive` past its 10s deadline ~30-50% of runs. The test now uses a 20s per-step budget under `CI`. The race the test guards (`maxSessions` cap, fixed in v1.7.1 / #331) is unchanged. (#337)
+
+### Changed
+- **Dependencies** — `@hono/node-server` 1.19.14 → 2.0.0 (#335), `eslint` 10.2.0 → 10.2.1, `prettier` 3.8.2 → 3.8.3, `typescript` 6.0.2 → 6.0.3, `typescript-eslint` 8.58.2 → 8.59.0 (#334).
 
 ## [1.8.1] - 2026-04-21
 
