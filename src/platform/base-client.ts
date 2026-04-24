@@ -209,9 +209,11 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
 
   /**
    * Force close the connection (called by heartbeat when connection is dead).
-   * Subclasses should close their WebSocket/connection here.
+   * Subclasses should close their WebSocket/connection here. Returns a Promise
+   * that resolves when the close has fully propagated; production callers may
+   * fire-and-forget, but tests should await it to avoid bot-restart races.
    */
-  protected abstract forceCloseConnection(): void;
+  protected abstract forceCloseConnection(): Promise<void>;
 
   /**
    * Recover messages that were posted while disconnected.
@@ -268,9 +270,15 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
 
   /**
    * Disconnect from the platform.
-   * Can be overridden by subclasses to add platform-specific cleanup.
+   *
+   * Returns a Promise that resolves when the underlying socket has fully
+   * closed. Production callers may fire-and-forget (the Promise rejects
+   * cleanly with no listeners), but tests should `await` to avoid the next
+   * `connect()` racing a still-bound prior session on the same bot token.
+   *
+   * Subclasses can override but must preserve the await-able semantics.
    */
-  disconnect(): void {
+  disconnect(): Promise<void> {
     wsLogger.info('Disconnecting (intentional)');
     this.isIntentionalDisconnect = true;
     this.stopHeartbeat();
@@ -279,7 +287,16 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
-    this.forceCloseConnection();
+    // Detach all event listeners so any in-flight 'message' handler the
+    // websocket queued just before close can't still trigger startSession
+    // on a half-shut-down bot. Critical for integration tests: without it,
+    // back-to-back startTestBot/bot.stop sees the previous bot's listener
+    // still react to the next test's @mention, producing two concurrent
+    // sessions on the same Mattermost bot token (visible in CI as a
+    // "Session started" log immediately followed by another from a
+    // different bot, two mock-claude pids, and downstream test failures).
+    this.removeAllListeners();
+    return this.forceCloseConnection();
   }
 
   /**

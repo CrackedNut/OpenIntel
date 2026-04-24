@@ -74,10 +74,17 @@ describe.skipIf(SKIP)('Session Permissions', () => {
       await new Promise((r) => setTimeout(r, 200));
     });
 
+    // The permission-request mock scenario takes ~750ms of internal mock delay,
+    // then ~4 sequential bot posts, each subject to Mattermost's 500-retry
+    // budget (up to 3.5s per recovered post). Saw a 60s timeout in CI; 90s
+    // gives more breathing room while staying well under the 120s test cap.
+    // Local stays at 30s.
+    const responseTimeout = process.env.CI ? 90000 : 30000;
+
     // Get the bot username based on platform
     const getBotUsername = () => {
       if (platformType === 'mattermost') {
-        return config.mattermost.bot.username;
+        return bot?.botUsername ?? (bot?.botUsername ?? config.mattermost.bot.username);
       }
       // Slack uses a different format
       return config.slack?.botUsername || 'claude-test-bot';
@@ -101,7 +108,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
         // The mock scenario posts: header, tool_use content, then "Done! I've written..."
         // With CI POST /posts retries, posts can be delayed, so wait for actual content.
         await waitForBotResponse(ctx, rootPost.id, {
-          timeout: 30000,
+          timeout: responseTimeout,
           pattern: /Done|written/i,
         });
 
@@ -109,7 +116,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
         await waitForSessionEnded(bot.sessionManager, rootPost.id, { timeout: 10000 });
 
         const allPosts = await getThreadPosts(ctx, rootPost.id);
-        const botPosts = allPosts.filter((p) => p.userId === ctx.botUserId);
+        const botPosts = allPosts.filter((p) => ctx.botUserIds.includes(p.userId));
 
         // Verify we have meaningful responses
         expect(botPosts.length).toBeGreaterThanOrEqual(2);
@@ -133,7 +140,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
 
         // Wait for the write action to appear in bot posts
         await waitForBotResponse(ctx, rootPost.id, {
-          timeout: 30000,
+          timeout: responseTimeout,
           pattern: /write|file/i,
         });
 
@@ -141,7 +148,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
         await waitForSessionEnded(bot.sessionManager, rootPost.id, { timeout: 10000 });
 
         const allPosts = await getThreadPosts(ctx, rootPost.id);
-        const botPosts = allPosts.filter((p) => p.userId === ctx.botUserId);
+        const botPosts = allPosts.filter((p) => ctx.botUserIds.includes(p.userId));
 
         // With the permission-request scenario, we should see:
         // - Session header
@@ -165,7 +172,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
         // Wait for the completion message (not just a post count).
         // With CI POST /posts retries, posts can be delayed.
         await waitForBotResponse(ctx, rootPost.id, {
-          timeout: 30000,
+          timeout: responseTimeout,
           pattern: /done|written|success/i,
         });
 
@@ -196,7 +203,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
 
         // Wait for any bot response
         const responses = await waitForBotResponse(ctx, rootPost.id, {
-          timeout: 30000,
+          timeout: responseTimeout,
           minResponses: 1,
         });
 
@@ -205,7 +212,7 @@ describe.skipIf(SKIP)('Session Permissions', () => {
 
         // Bot should have created posts without crashing
         const allPosts = await getThreadPosts(ctx, rootPost.id);
-        const botPosts = allPosts.filter((p) => p.userId === ctx.botUserId);
+        const botPosts = allPosts.filter((p) => ctx.botUserIds.includes(p.userId));
         expect(botPosts.length).toBeGreaterThanOrEqual(1);
       });
     });

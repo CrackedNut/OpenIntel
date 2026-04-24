@@ -35,6 +35,26 @@ function generateTestSessionsPath(): string {
   return join(sessionsDir, `sessions-${testRunId}.json`);
 }
 
+/**
+ * Round-robin cursor into the Mattermost bot pool. Each call to
+ * startTestBot picks the next bot. Avoids two test bots sharing the same
+ * Mattermost user token (which would cause WebSocket events to be
+ * delivered to both — the cross-test interference that broke MAX_SESSIONS).
+ */
+let mattermostBotPoolCursor = 0;
+function nextMattermostBot(testConfig: ReturnType<typeof loadConfig>): {
+  bot: { username: string; displayName: string; token?: string; userId?: string };
+  index: number;
+} {
+  const pool = testConfig.mattermost.bots;
+  if (!pool || pool.length === 0) {
+    return { bot: testConfig.mattermost.bot, index: 0 };
+  }
+  const idx = mattermostBotPoolCursor % pool.length;
+  mattermostBotPoolCursor++;
+  return { bot: pool[idx], index: idx };
+}
+
 export interface TestBot {
   sessionManager: SessionManager;
   /** @deprecated Use `platformClient` instead for platform-agnostic access */
@@ -44,6 +64,15 @@ export interface TestBot {
   platformId: string;
   /** The isolated sessions file path for this test bot */
   sessionsPath: string;
+  /**
+   * The bot's mention name. For Mattermost this is the unique pool bot
+   * username (e.g. "claude-test-bot-3"); for Slack it's the configured
+   * mock bot name. Use this to construct `@mention` strings — the config
+   * default may belong to a different test's bot.
+   */
+  botUsername: string;
+  /** The bot's user ID — match this when filtering bot posts. */
+  botUserId: string;
   /** Stop the bot and unpersist all sessions (normal cleanup) */
   stop(): Promise<void>;
   /** Stop the bot but preserve persisted sessions (for restart testing) */
@@ -148,6 +177,8 @@ export async function startTestBot(options: StartBotOptions = {}): Promise<TestB
   // Create platform client based on platform type
   let platformClient: PlatformClient;
   let platformId: string;
+  let botUsername: string;
+  let botUserId: string;
 
   if (platform === 'slack') {
     // Validate required Slack options
@@ -181,9 +212,16 @@ export async function startTestBot(options: StartBotOptions = {}): Promise<TestB
     };
 
     platformClient = new SlackClient(slackConfig);
+    botUsername = slackBotName;
+    botUserId = 'U_BOT_USER';
   } else {
-    // Default: Mattermost
-    platformId = 'test-mattermost';
+    // Default: Mattermost — pick the next bot from the pool so each test
+    // has its own user token (no cross-test event interference). Use a
+    // unique platformId per pool slot so module-level state in
+    // src/operations/sticky-message/handler.ts doesn't conflate bots
+    // (its stickyPostIds Map is keyed by platformId).
+    const { bot: poolBot, index: poolIndex } = nextMattermostBot(testConfig);
+    platformId = `test-mattermost-${poolIndex}`;
     const allowedUsers = allowedUsersOverride ?? [
       ...testConfig.mattermost.testUsers.map(u => u.username),
       ...extraAllowedUsers,
@@ -194,14 +232,16 @@ export async function startTestBot(options: StartBotOptions = {}): Promise<TestB
       type: 'mattermost' as const,
       displayName: 'Test Mattermost',
       url: testConfig.mattermost.url,
-      token: testConfig.mattermost.bot.token!,
+      token: poolBot.token!,
       channelId: testConfig.mattermost.channel.id!,
-      botName: testConfig.mattermost.bot.username,
+      botName: poolBot.username,
       allowedUsers,
       skipPermissions,
     };
 
     platformClient = new MattermostClient(platformConfig);
+    botUsername = poolBot.username;
+    botUserId = poolBot.userId!;
   }
 
   // Create the session manager (no UI, no chrome for tests)
@@ -227,14 +267,26 @@ export async function startTestBot(options: StartBotOptions = {}): Promise<TestB
       onKill: async () => {
         // In tests, just disconnect without exiting the process
         await sessionManager.killAllSessions();
-        platformClient.disconnect();
+        await platformClient.disconnect();
         // Note: Don't delete CLAUDE_PATH/CLAUDE_SCENARIO here - can cause race conditions
       },
     });
   });
 
-  // Connect to platform
-  await platformClient.connect();
+  // Connect to platform. Wrap to surface the actual error — MattermostClient's
+  // connect() rejects with the raw WebSocket error event, which serializes as
+  // "[object Event]" in test failure output, making CI flakes impossible to
+  // diagnose from logs alone.
+  try {
+    await platformClient.connect();
+  } catch (err) {
+    const detail = err instanceof Error
+      ? err.message
+      : typeof err === 'object' && err !== null
+        ? JSON.stringify({ type: (err as { type?: string }).type, code: (err as { code?: number }).code, message: (err as { message?: string }).message })
+        : String(err);
+    throw new Error(`[test-bot] platformClient.connect() failed: ${detail}`, { cause: err });
+  }
 
   // Initialize session manager (loads persisted sessions)
   await sessionManager.initialize();
@@ -254,16 +306,25 @@ export async function startTestBot(options: StartBotOptions = {}): Promise<TestB
     platformClient,
     platformId,
     sessionsPath,
+    botUsername,
+    botUserId,
     async stop() {
       if (debug) {
         console.log('[test-bot] Stopping...');
       }
-      // Kill all sessions
+      // Kill all sessions, then await full WebSocket close before returning.
+      // disconnect() now resolves when the close handshake completes (or
+      // hits its 1s safety timeout) AND removes EventEmitter listeners.
       await sessionManager.killAllSessions();
-      // Disconnect from platform
-      platformClient.disconnect();
-      // Wait a bit for processes to terminate fully
-      await new Promise((r) => setTimeout(r, 100));
+      await platformClient.disconnect();
+      // Server-side propagation delay: even after our socket closes, the
+      // Mattermost server can take ~hundreds of ms to process the close
+      // and stop sending events to that connection. Without this wait,
+      // back-to-back tests see two bot tokens with TWO active server-
+      // side connections during the transition window — visible in CI
+      // as duplicate session starts (two pids per @mention). 500ms is
+      // empirically sufficient.
+      await new Promise((r) => setTimeout(r, 500));
       // Note: Don't delete CLAUDE_PATH/CLAUDE_SCENARIO here - the next test will
       // set them anyway, and deleting them can cause race conditions with async
       // operations that are still running.
@@ -280,10 +341,8 @@ export async function startTestBot(options: StartBotOptions = {}): Promise<TestB
       sessionManager.setShuttingDown();
       // Kill sessions but keep persistence (simulates graceful shutdown)
       await sessionManager.killAllSessions();
-      // Disconnect from platform
-      platformClient.disconnect();
-      // Wait a bit for processes to terminate fully
-      await new Promise((r) => setTimeout(r, 100));
+      await platformClient.disconnect();
+      await new Promise((r) => setTimeout(r, 500));
       // Note: Keep all env vars - CLAUDE_PATH/CLAUDE_SCENARIO will be set by next test,
       // and CLAUDE_THREADS_SESSIONS_PATH needs to persist for session resume testing
       if (debug) {
