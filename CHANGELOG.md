@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3] - 2026-04-24
+
+### Internals
+
+- **Extracted `ReactionRouter` from `SessionManager`** into `src/session/reaction-router.ts`. The reaction dispatch logic (allowlist gate, audit log, resume-from-reaction, session-level reactions, MessageManager fallthrough) previously inlined as three private methods on `SessionManager` now lives in its own module behind an explicit `ReactionRouterDeps` interface. Pure extraction — no behavior change, no persisted-schema change. `manager.ts` dropped from 1767 to 1633 LOC. (#348)
+- **Lifecycle FSM** (`src/session/lifecycle-fsm.ts`). `transitionTo()` now validates each `from → to` change against an allowed-transition table. Warn-only by default — illegal transitions log at `warn` with a structured `fsm.illegal_transition` payload and the state assignment proceeds. Set `CLAUDE_THREADS_FSM_STRICT=1` to throw instead. The transition table is derived from observed transitions in the codebase, not an idealised graph; wiring it up surfaced five legitimate transitions (`starting→paused`, `starting→interrupted`, `starting→restarting`, `paused→restarting`, `interrupted→paused`) that the original comment block didn't mention. (#349)
+- **Removed `CLAUDE_THREADS_SERIALIZE_V2` rollback flag** from PR 3. `persistSession` now unconditionally goes through `MessageManager.serialize()`. One release of bake time with the parity test as guard; snapshot tests remain. (#349)
+- **Removed `CLAUDE_THREADS_MCP_CONFIG_INLINE` rollback flag** from PR 2. Production always writes the MCP config to an owner-only tempfile (mode 0600); the `inline` opt on `materializeMcpConfig` stays as a test-only shortcut. (#349)
+
 ## [1.9.2] - 2026-04-24
 
 ### Fixed
