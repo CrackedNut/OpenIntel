@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-04-29
+
+### Added
+- **Thread permalink in Claude session context.** The system-prompt context block now includes `**Thread:** <permalink>` alongside the existing platform and working-directory entries. When Claude opens a PR, files a ticket, or otherwise produces an artifact for someone to review later, it can paste the link back into the description so reviewers can trace the change to the discussion it came from. Mattermost and Slack both already exposed `getThreadLink()`; pure plumbing change. Also restores the platform/working-directory context on the worktree-restart path, which had been silently dropped pre-existing. (#352)
+
+### Fixed
+- **Sticky-by-thread Claude account binding (multi-account mode).** In multi-account configurations the `claudeAccountId` written to `sessions.json` and the `$HOME` Claude was actually spawned under could drift apart under concurrent acquisitions, leaving sessions unresumable after a bot restart with `Detected permanent failure: The conversation history for this session no longer exists`. Real-world incident: 14 sessions soft-deleted in one restart cycle, 3 of them genuine victims of this drift. `AccountPool.acquire()` now binds threads to accounts deterministically via `accounts[hash(threadId) % n]` (FNV-1a, dependency-free), so the spawn-time `$HOME` and the persisted id both derive from the same hash and cannot drift. `preferredId` still wins over the sticky binding (resume invariant: OAuth history can't move), and the sticky path falls through to round-robin when the chosen account is in cooldown. (#350)
+
 ## [1.9.4] - 2026-04-29
 
 ### Fixed
