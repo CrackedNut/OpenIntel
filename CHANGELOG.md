@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-05-05
+
+### Changed
+- **`read_post` allows cross-channel reads on public Mattermost channels.** The cross-channel guard kept rejecting permalinks that pointed outside the bot's session channel — appropriate for private/DM/group channels (real privacy concern: a thread participant without access to the source channel sees content they shouldn't), but overzealous for public channels where anyone with an account can already navigate to the post. `McpPost` now carries a `channelType?: 'public' | 'private'` field, populated for Mattermost via `/channels/{id}` (type `O` = public; `P`/`D`/`G` = private) with a per-process cache so chatty threads don't trigger N redundant lookups. The resolver skips the wrong-channel check when `channelType === 'public'`; missing `channelType` is treated as private (fail-safe). Slack is unchanged: its MCP-side `readPost` is hard-scoped to the bot's configured channel via `conversations.history`, so cross-channel reads aren't possible there regardless of channel visibility. (#369)
+
 ## [1.13.1] - 2026-05-05
 
 ### Fixed
