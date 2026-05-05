@@ -22,7 +22,10 @@ import { cooldownDeadline } from '../claude/rate-limit-detector.js';
 import type { PersistedSession } from '../persistence/session-store.js';
 import { createThreadLogger } from '../persistence/thread-logger.js';
 import { VERSION } from '../version.js';
-import { generateChatPlatformPrompt, buildSessionContext } from '../commands/index.js';
+import {
+  generateChatPlatformPrompt,
+  buildAppendSystemPrompt,
+} from '../commands/index.js';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { keepAlive } from '../utils/keep-alive.js';
@@ -30,6 +33,7 @@ import { logAndNotify, withErrorHandling } from '../utils/error-handler/index.js
 import { createLogger } from '../utils/logger.js';
 import { createSessionLog } from '../utils/session-log.js';
 import { post, postError, updateLastMessage } from '../operations/post-helpers/index.js';
+import { postResumeCoAuthorOnboarding } from '../operations/commands/handler.js';
 import type { SessionContext } from '../operations/session-context/index.js';
 import { suggestSessionMetadata } from '../operations/suggestions/title.js';
 import { suggestSessionTags } from '../operations/suggestions/tag.js';
@@ -867,9 +871,21 @@ export async function startSession(
     log.info(`Starting session with interactive permissions (from !permissions command)`);
   }
 
-  // Build system prompt with session context
-  const sessionContext = buildSessionContext(platform, workingDir, actualThreadId);
-  const systemPrompt = `${sessionContext}\n\n${CHAT_PLATFORM_PROMPT}`;
+  // Build system prompt with session context. New sessions only have the
+  // owner in `sessionAllowedUsers`, so the collaborator section is the
+  // standby one-liner. The full list is published into the thread later
+  // (by `postCollaboratorUpdatedNotice` on each !invite/!kick), and Claude
+  // reads it from there on the next turn — the static prompt is not rewritten.
+  const systemPrompt = await buildAppendSystemPrompt(
+    platform,
+    platformId,
+    workingDir,
+    actualThreadId,
+    username,
+    [username],
+    CHAT_PLATFORM_PROMPT,
+    ctx.state.githubEmailsStore,
+  );
 
   // Create Claude CLI with options
   const platformMcpConfig = platform.getMcpConfig();
@@ -1126,9 +1142,18 @@ export async function resumeSession(
     state.forceInteractivePermissions ? 'default' : ctx.config.permissionMode;
   const platformMcpConfig = platform.getMcpConfig();
 
-  // Include system prompt for resumed sessions (provides platform context and command info)
-  const sessionContext = buildSessionContext(platform, state.workingDir, state.threadId);
-  const appendSystemPrompt = `${sessionContext}\n\n${CHAT_PLATFORM_PROMPT}`;
+  // Include system prompt for resumed sessions (platform context, command info,
+  // and collaborator co-author tags carried over from before the restart).
+  const appendSystemPrompt = await buildAppendSystemPrompt(
+    platform,
+    state.platformId,
+    state.workingDir,
+    state.threadId,
+    state.startedBy,
+    state.sessionAllowedUsers || [state.startedBy],
+    CHAT_PLATFORM_PROMPT,
+    ctx.state.githubEmailsStore,
+  );
 
   // Resume MUST re-use the same Claude account the session started on —
   // for OAuth accounts the conversation history lives under that HOME.
@@ -1321,6 +1346,12 @@ export async function resumeSession(
 
     // Update sticky channel message with resumed session
     await ctx.ops.updateStickyMessage();
+
+    // Co-author onboarding: if collaborators in this session haven't yet
+    // registered a GitHub noreply email, remind them once on resume so
+    // they get the chance to fix it before the next commit. Quiet for solo
+    // sessions and for sessions where everyone has already registered.
+    await postResumeCoAuthorOnboarding(session, ctx);
 
     // Update persistence with new activity time
     ctx.ops.persistSession(session);
