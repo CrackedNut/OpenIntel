@@ -420,6 +420,28 @@ class SlackMcpPlatformApi implements McpPlatformApi {
     }
   }
 
+  async addReaction(postId: string, emojiName: string): Promise<void> {
+    // Slack reaction names never include the surrounding colons in the API.
+    const name = emojiName.replace(/:/g, '');
+    mcpLogger.debug(`addReaction: :${name}: on ts ${postId}`);
+    // Implicit channel scope: Slack identifies messages by (channel, ts), so
+    // we always pass the bot's configured channel here. The interface
+    // contract says the caller is responsible for scope checks, but on
+    // Slack we can't react outside the bot's channel even if asked: there
+    // is no other channel the bot is reachable in. Callers that resolve
+    // permalinks for other channels will hit `wrong-channel` in
+    // resolveSlackPermalink before reaching this method.
+    await slackApi(
+      'reactions.add',
+      this.config.botToken,
+      {
+        channel: this.config.channelId,
+        timestamp: postId,
+        name,
+      },
+    );
+  }
+
   async readThread(
     threadRootId: string,
     options?: { limit?: number },
