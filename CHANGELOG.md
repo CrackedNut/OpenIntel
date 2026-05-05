@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-05-05
+
 ### Added
 - **Claude can follow chat permalinks via the new `read_post` MCP tool.** When the user shares a Mattermost or Slack permalink in the thread, Claude can call `read_post(url, include_thread?, max_messages?)` to resolve it to the post body (and optional thread context) instead of asking the user to copy-paste. Auto-approved like `send_file`: the URL host check (Mattermost) or workspace `*.slack.com` + channel-id match (Slack) inside the handler are the real gate, since the bot's token is already scoped to what it can see. Defaults: 20 thread messages per call (hard cap 50), 2000-char body truncation per message, returned content marked as untrusted user input in the tool description (prompt-injection note). (#366)
+- **Session collaborators surface as `Co-Authored-By:` trailers on commits Claude makes.** When the session owner runs `!invite @user`, that user's name + email is added to the system-prompt attribution block; the owner is the implicit author and is excluded, and the bot account plus AI assistants are excluded explicitly. Mid-session updates work without restart: `!invite` and `!kick` post a "Collaborators updated" notice in the thread, and Claude reads the current list from there on its next turn. Solo sessions still get a one-line standby instruction so a later `!invite` is honored without a respawn. All four Claude (re)spawn sites — `startSession`, `resumeSession`, `!cd`, worktree create/join — now compose the system prompt through one helper so the attribution rule cannot silently drop on respawn. Collaborators without a resolvable email are skipped silently rather than producing a malformed trailer. (#367)
 
 ### Changed
 - **MCP package renamed `claude-threads-permissions` → `claude-threads-mcp`** to match the broader MCP-server scope (permission prompts, file uploads, post reads — no longer permission-only). Tool names exposed to Claude follow: `mcp__claude-threads-permissions__send_file` → `mcp__claude-threads-mcp__send_file`, etc. **Breaking for in-flight sessions across upgrade**: a Claude run that started under the old name will see the new tool names after restart, so any auto-approve rules tied to the old prefix need updating. The bot itself rewires automatically. (#366)
@@ -18,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`PermissionApi` interface renamed to `McpPlatformApi`.** The interface now covers permission prompts, file uploads, and post reads, so the old name no longer fits. Includes file renames (`src/platform/permission-api*.ts` → `src/platform/mcp-platform-api*.ts`) and the matching impl files under `src/platform/{mattermost,slack}/`. (#366)
 - **Shared permalink utilities at `src/platform/permalink-shared.ts`.** Caps (`DEFAULT_THREAD_LIMIT`, `MAX_THREAD_LIMIT`, `MAX_MESSAGE_BODY_CHARS`) and helpers (`clampThreadLimit`, `truncateBody`, `quoteBlock`) used by both Mattermost and Slack permalink modules — prevents drift on rendering rules. (#366)
 - **Shared `fetch` test harness at `src/platform/test-helpers/fetch-harness.ts`.** Consolidates the recorder + responder pattern that lived in three platform-API test files. (#366)
+- **`buildAppendSystemPrompt` helper in `src/commands/system-prompt-generator.ts`.** Single composition point for the four Claude (re)spawn sites; covers solo-standby and full-collaborator forms with shared exclusion guidance for owner / bot / AI. (#367)
+- **`GitHubEmailsStore` (`src/persistence/github-emails-store.ts`).** Persists collaborator email lookups so the attribution block can be rebuilt after a restart without re-querying the platform. (#367)
 
 ## [1.12.0] - 2026-05-05
 
