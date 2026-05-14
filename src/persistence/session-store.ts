@@ -4,6 +4,7 @@ import { join } from 'path';
 import { createLogger } from '../utils/logger.js';
 import type { PlatformFile } from '../platform/types.js';
 import type { ContextPromptFile } from '../operations/executors/types.js';
+import type { OverheadVisibility } from '../config/types.js';
 
 const log = createLogger('persist');
 
@@ -84,6 +85,12 @@ export interface PersistedSession {
    * and for bots running in single-account mode.
    */
   claudeAccountId?: string;
+  /**
+   * Per-thread session header visibility resolved at session start.
+   * Optional for backward compatibility — old `sessions.json` files predate
+   * this field and resume with `'full'` (today's behavior).
+   */
+  sessionHeaderMode?: OverheadVisibility;
 }
 
 /**

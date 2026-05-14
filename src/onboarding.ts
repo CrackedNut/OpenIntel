@@ -16,6 +16,8 @@ import {
   type SlackPlatformConfig,
   type LimitsConfig,
   type PermissionMode,
+  type OverheadVisibility,
+  DEFAULT_OVERHEAD_VISIBILITY,
 } from './config/index.js';
 import { bold, dim, green } from './utils/colors.js';
 import { validateClaudeCli } from './claude/version-check.js';
@@ -47,6 +49,35 @@ const PERMISSION_MODE_CHOICES = [
 
 function permissionModeChoiceIndex(mode: PermissionMode): number {
   return PERMISSION_MODE_CHOICES.findIndex((c) => c.value === mode);
+}
+
+/**
+ * One picker drives both `sessionHeader` and `stickyMessage` per platform —
+ * the common case is "I want the bot to be more / less chatty in this
+ * channel," not "make the per-thread header `minimal` but the channel
+ * sticky `hidden`." Power users who want different values per surface can
+ * still set them in YAML directly.
+ */
+const OVERHEAD_VISIBILITY_CHOICES = [
+  {
+    title: 'Full (default)',
+    value: 'full' as OverheadVisibility,
+    description: 'Per-thread session header + channel sticky with active-sessions list',
+  },
+  {
+    title: 'Minimal',
+    value: 'minimal' as OverheadVisibility,
+    description: 'One-line status bar only — drops the table and sessions list',
+  },
+  {
+    title: 'Hidden',
+    value: 'hidden' as OverheadVisibility,
+    description: 'No header post, no sticky — Claude\'s reply is the first message in the thread',
+  },
+];
+
+function overheadVisibilityChoiceIndex(mode: OverheadVisibility): number {
+  return OVERHEAD_VISIBILITY_CHOICES.findIndex((c) => c.value === mode);
 }
 
 // Get the path to the Slack app manifest file
@@ -1023,6 +1054,21 @@ async function setupMattermostPlatform(
         skipPermissions: existingMattermost.skipPermissions,
       })
     : 'auto';
+  // Detect a split config (sessionHeader and stickyMessage set to different
+  // values). The wizard's single-pick UX cannot represent that — silently
+  // collapsing it would be data loss. Skip the prompt entirely in that case
+  // and preserve the original values verbatim. Power users with split
+  // configs already know how to edit YAML.
+  const existingHeader = existingMattermost?.sessionHeader as OverheadVisibility | undefined;
+  const existingSticky = existingMattermost?.stickyMessage as OverheadVisibility | undefined;
+  const hasSplitVerbosity =
+    existingHeader !== undefined &&
+    existingSticky !== undefined &&
+    existingHeader !== existingSticky;
+  // Channel verbosity defaults to whatever the existing config used (or
+  // `'full'` if both are unset). Keeps reconfigure non-surprising.
+  let lastChannelVerbosity: OverheadVisibility =
+    existingHeader ?? existingSticky ?? DEFAULT_OVERHEAD_VISIBILITY;
 
   // Main loop - allows retrying when validation fails
   while (true) {
@@ -1147,6 +1193,29 @@ async function setupMattermostPlatform(
       initial: permissionModeChoiceIndex(lastPermissionMode),
     }, { onCancel });
 
+    // Channel verbosity (sessionHeader + stickyMessage). One prompt drives both
+    // — separating them is rare and the YAML is right there for the few who
+    // want different values per surface. Skip the prompt entirely when the
+    // existing config has split values, to avoid silently collapsing them.
+    let channelVerbosity: OverheadVisibility = lastChannelVerbosity;
+    if (hasSplitVerbosity) {
+      console.log('');
+      console.log(dim(
+        `  Channel verbosity: keeping split values from current config ` +
+        `(sessionHeader=${existingHeader}, stickyMessage=${existingSticky}). ` +
+        `Edit YAML directly to change.`
+      ));
+    } else {
+      const result = await prompts({
+        type: 'select',
+        name: 'channelVerbosity',
+        message: 'How verbose should the bot be in this channel?',
+        choices: OVERHEAD_VISIBILITY_CHOICES,
+        initial: overheadVisibilityChoiceIndex(lastChannelVerbosity),
+      }, { onCancel });
+      channelVerbosity = result.channelVerbosity;
+    }
+
     // Save entered values for potential retry
     lastUrl = basicSettings.url;
     lastDisplayName = basicSettings.displayName;
@@ -1155,6 +1224,7 @@ async function setupMattermostPlatform(
     lastBotName = basicSettings.botName;
     lastAllowedUsers = allowedUsers.join(',');
     lastPermissionMode = permissionMode;
+    lastChannelVerbosity = channelVerbosity;
 
     // Validate credentials
     console.log('');
@@ -1225,6 +1295,16 @@ async function setupMattermostPlatform(
       botName: basicSettings.botName,
       allowedUsers,
       permissionMode: lastPermissionMode,
+      // Verbosity persistence:
+      //  - Split config (user had different values per surface, prompt was
+      //    skipped): preserve both originals verbatim.
+      //  - User picked default: omit both fields, keeps generated YAML minimal.
+      //  - User picked non-default: write both with the same value.
+      ...(hasSplitVerbosity
+        ? { sessionHeader: existingHeader, stickyMessage: existingSticky }
+        : lastChannelVerbosity !== DEFAULT_OVERHEAD_VISIBILITY
+          ? { sessionHeader: lastChannelVerbosity, stickyMessage: lastChannelVerbosity }
+          : {}),
     };
   }
 }
@@ -1410,6 +1490,17 @@ async function setupSlackPlatform(
         skipPermissions: existingSlack.skipPermissions,
       })
     : 'auto';
+  // See setupMattermostPlatform for the rationale on split-config detection
+  // — the wizard's single-pick UX cannot represent split values, so we
+  // detect and skip rather than silently collapsing them.
+  const existingHeader = existingSlack?.sessionHeader as OverheadVisibility | undefined;
+  const existingSticky = existingSlack?.stickyMessage as OverheadVisibility | undefined;
+  const hasSplitVerbosity =
+    existingHeader !== undefined &&
+    existingSticky !== undefined &&
+    existingHeader !== existingSticky;
+  let lastChannelVerbosity: OverheadVisibility =
+    existingHeader ?? existingSticky ?? DEFAULT_OVERHEAD_VISIBILITY;
 
   // Main loop - allows retrying when validation fails
   while (true) {
@@ -1542,6 +1633,27 @@ async function setupSlackPlatform(
       initial: permissionModeChoiceIndex(lastPermissionMode),
     }, { onCancel });
 
+    // Channel verbosity (sessionHeader + stickyMessage). Same prompt as
+    // Mattermost — see OVERHEAD_VISIBILITY_CHOICES for the rationale.
+    let channelVerbosity: OverheadVisibility = lastChannelVerbosity;
+    if (hasSplitVerbosity) {
+      console.log('');
+      console.log(dim(
+        `  Channel verbosity: keeping split values from current config ` +
+        `(sessionHeader=${existingHeader}, stickyMessage=${existingSticky}). ` +
+        `Edit YAML directly to change.`
+      ));
+    } else {
+      const result = await prompts({
+        type: 'select',
+        name: 'channelVerbosity',
+        message: 'How verbose should the bot be in this channel?',
+        choices: OVERHEAD_VISIBILITY_CHOICES,
+        initial: overheadVisibilityChoiceIndex(lastChannelVerbosity),
+      }, { onCancel });
+      channelVerbosity = result.channelVerbosity;
+    }
+
     // Save entered values for potential retry
     lastDisplayName = basicSettings.displayName;
     lastBotToken = finalBotToken;
@@ -1550,6 +1662,7 @@ async function setupSlackPlatform(
     lastBotName = basicSettings.botName;
     lastAllowedUsers = allowedUsers.join(',');
     lastPermissionMode = permissionMode;
+    lastChannelVerbosity = channelVerbosity;
 
     // Validate credentials
     console.log('');
@@ -1626,6 +1739,13 @@ async function setupSlackPlatform(
       botName: basicSettings.botName,
       allowedUsers,
       permissionMode: lastPermissionMode,
+      // Same persistence rules as Mattermost (split → preserve, default →
+      // omit, non-default → write both with same value).
+      ...(hasSplitVerbosity
+        ? { sessionHeader: existingHeader, stickyMessage: existingSticky }
+        : lastChannelVerbosity !== DEFAULT_OVERHEAD_VISIBILITY
+          ? { sessionHeader: lastChannelVerbosity, stickyMessage: lastChannelVerbosity }
+          : {}),
     };
   }
 }

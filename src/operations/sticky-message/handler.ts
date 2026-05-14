@@ -11,7 +11,7 @@ import { getSessionStatus } from '../../session/types.js';
 import type { PlatformClient, PlatformFormatter } from '../../platform/index.js';
 import { getPlatformIcon } from '../../platform/utils.js';
 import type { SessionStore, PersistedSession } from '../../persistence/session-store.js';
-import type { WorktreeMode, PermissionMode } from '../../config/index.js';
+import type { WorktreeMode, PermissionMode, OverheadVisibility } from '../../config/index.js';
 import { permissionModeDisplay } from '../../config/index.js';
 import type { AccountPoolStatus } from '../../claude/account-pool.js';
 import { formatBatteryStatus } from '../../utils/battery.js';
@@ -166,6 +166,13 @@ export interface StickyMessageConfig {
    * sticky skips the account summary entirely in that case.
    */
   accountPoolStatus?: AccountPoolStatus[];
+  /**
+   * Per-platform overhead visibility for the sticky message.
+   * - `'full'` (default): status bar + active sessions list, today's behavior.
+   * - `'minimal'`: status bar only, no sessions list / description / footer.
+   * - `'hidden'`: short-circuit — no post is built or sent.
+   */
+  overhead?: OverheadVisibility;
 }
 
 // Store sticky post IDs per platform (in-memory cache)
@@ -563,6 +570,16 @@ export async function buildStickyMessage(
   // Build status bar (shown even when no sessions) - show total count
   const statusBar = await buildStatusBar(totalCount, config, formatter, platformId);
 
+  // `minimal` mode: status bar only. Skip sessions list, description, footer,
+  // history, and the "Mention me" hint. Caller still posts the result so the
+  // bumping behavior is preserved.
+  if (config.overhead === 'minimal') {
+    return [
+      formatter.formatHorizontalRule(),
+      statusBar,
+    ].join('\n');
+  }
+
   // Get recent history (completed + timed-out sessions)
   // Pass active session IDs to exclude them from history
   const activeSessionIds = new Set(sessions.keys());
@@ -785,6 +802,23 @@ async function validateLastMessageIds(
   await Promise.all(validationPromises);
 }
 
+// Tracks platforms we've already cleaned up after entering `hidden` mode.
+// Module-level (not per-instance) because `stickyPostIds`, `needsBump`, and
+// `pausedPlatforms` above are also module-level — this state shares their
+// process-lifetime scope. A platform is removed from the set when the platform
+// is unregistered (see `clearPlatformState` below) so a register / unregister
+// cycle re-runs cleanup.
+const hiddenCleanupDone: Set<string> = new Set();
+
+/**
+ * Reset the hidden-cleanup tracker for a platform. Call from `removePlatform`
+ * so the next registration of the same platform re-cleans if `hidden` is set
+ * again.
+ */
+export function clearHiddenCleanupTracking(platformId: string): void {
+  hiddenCleanupDone.delete(platformId);
+}
+
 /**
  * Internal implementation of sticky message update.
  */
@@ -793,6 +827,33 @@ async function updateStickyMessageImpl(
   sessions: Map<string, Session>,
   config: StickyMessageConfig
 ): Promise<void> {
+  // `hidden` mode: don't post a sticky at all. Clean up any leftover sticky
+  // from a previous run (or a previous mode setting) once.
+  if (config.overhead === 'hidden') {
+    if (!hiddenCleanupDone.has(platform.platformId)) {
+      hiddenCleanupDone.add(platform.platformId);
+      const existing = stickyPostIds.get(platform.platformId);
+      if (existing) {
+        log.info(`sticky[${platform.platformId}] hidden mode: removing leftover ${formatShortId(existing)}`);
+        try { await platform.unpinPost(existing); } catch { /* may already be unpinned */ }
+        try { await platform.deletePost(existing); } catch { /* may already be deleted */ }
+        stickyPostIds.delete(platform.platformId);
+        // Use removeStickyPostId, NOT saveStickyPostId('') — the latter writes
+        // an empty string into sessions.json which would resurface as a phantom
+        // sticky id on the next bot start, causing delete/unpin calls against ''.
+        if (sessionStore) {
+          sessionStore.removeStickyPostId(platform.platformId);
+        }
+      }
+      // Also sweep any orphaned bot-pinned messages from older runs.
+      try {
+        const botUser = await platform.getBotUser();
+        cleanupOldStickyMessages(platform, botUser.id, false, new Set()).catch(() => {});
+      } catch { /* getBotUser may fail in tests */ }
+    }
+    return;
+  }
+
   const platformSessions = [...sessions.values()].filter(s => s.platformId === platform.platformId);
   log.debug(`updateStickyMessage for ${platform.platformId}, ${platformSessions.length} sessions`);
   for (const s of platformSessions) {
@@ -909,15 +970,21 @@ async function updateStickyMessageImpl(
 /**
  * Update sticky messages for all platforms.
  * Called whenever sessions change.
+ *
+ * @param overheadByPlatform - Optional per-platform sticky visibility map.
+ *   When a platform isn't in the map, it inherits `config.overhead` (or the
+ *   `'full'` default).
  */
 export async function updateAllStickyMessages(
   platforms: Map<string, PlatformClient>,
   sessions: Map<string, Session>,
-  config: StickyMessageConfig
+  config: StickyMessageConfig,
+  overheadByPlatform?: Map<string, OverheadVisibility>
 ): Promise<void> {
-  const updates = [...platforms.values()].map(platform =>
-    updateStickyMessage(platform, sessions, config)
-  );
+  const updates = [...platforms.values()].map(platform => {
+    const overhead = overheadByPlatform?.get(platform.platformId) ?? config.overhead;
+    return updateStickyMessage(platform, sessions, { ...config, overhead });
+  });
   await Promise.all(updates);
 }
 

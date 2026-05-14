@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-platform channel-verbosity controls.** New `sessionHeader` and `stickyMessage` settings, both `full` (default) / `minimal` (one-line status bar) / `hidden` (no post). Reachable three ways: setup wizard ("How verbose should the bot be in this channel?"), CLI flags (`--session-header`, `--sticky-message`, applied to every platform), or per-platform YAML for split values. `hidden` for the header means Claude's reply is the first message in the thread; `hidden` for the sticky stops the `channel_post` bump entirely. Update notices still ride along in `minimal`. Session-header mode persists per session — resume preserves the user's choice. Old `sessions.json` defaults to `full`. The pre-existing top-level `stickyMessage: { description, footer }` block is unchanged. (#383)
+
 ## [1.15.2] - 2026-05-06
 
 ### Security

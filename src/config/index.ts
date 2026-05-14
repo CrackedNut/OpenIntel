@@ -19,6 +19,8 @@ export type {
   AutoRestartMode,
   ScheduledWindow,
   PermissionMode,
+  OverheadVisibility,
+  PlatformOverhead,
 } from './types.js';
 export {
   LIMITS_DEFAULTS,
@@ -27,9 +29,13 @@ export {
   permissionModeDisplay,
   permissionModeDescription,
   effectivePermissionMode,
+  OVERHEAD_VISIBILITY_VALUES,
+  DEFAULT_OVERHEAD_VISIBILITY,
+  isOverheadVisibility,
+  resolveOverheadVisibility,
 } from './types.js';
 
-import type { Config, WorktreeMode as WorktreeModeType, PermissionMode } from './types.js';
+import type { Config, WorktreeMode as WorktreeModeType, PermissionMode, OverheadVisibility } from './types.js';
 
 // YAML config path
 export const CONFIG_PATH = resolve(homedir(), '.config', 'claude-threads', 'config.yaml');
@@ -108,4 +114,15 @@ export interface CliArgs {
   chrome?: boolean;
   worktreeMode?: WorktreeModeType;
   keepAlive?: boolean;
+  /**
+   * Per-thread session-header verbosity override. When set, applied to every
+   * platform in the loaded config — short-circuit for "I want this hidden
+   * everywhere" without editing config.yaml.
+   */
+  sessionHeader?: OverheadVisibility;
+  /**
+   * Channel-sticky verbosity override. Same scope as `sessionHeader` —
+   * global, applied per-platform.
+   */
+  stickyMessage?: OverheadVisibility;
 }

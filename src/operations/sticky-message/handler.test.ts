@@ -124,6 +124,7 @@ function createMockSession(overrides: Partial<Session> = {}, taskContent: string
     sessionAllowedUsers: new Set(['testuser']),
     forceInteractivePermissions: false,
     sessionStartPostId: null,
+    sessionHeaderMode: 'full',
     tasksPostId: null,
     lastTasksContent: null,
     tasksCompleted: false,
@@ -1354,4 +1355,135 @@ describe('updateStickyMessage validates lastMessageId', () => {
     expect(session.lastMessageTs).toBeUndefined();
   });
 
+});
+
+// ===========================================================================
+// overhead modes — issue #383
+// Per-platform `stickyMessage: 'full' | 'minimal' | 'hidden'` visibility.
+// ===========================================================================
+
+describe('buildStickyMessage (overhead modes)', () => {
+  beforeEach(() => {
+    setShuttingDown(false);
+  });
+
+  it('full mode (default) renders the active-sessions list', async () => {
+    const session = createMockSession({ sessionTitle: 'My session' });
+    const sessions = new Map([[session.sessionId, session]]);
+    const result = await buildStickyMessage(sessions, 'test-platform', testConfig, mockFormatter, (t) => `/_redirect/pl/${t}`);
+
+    expect(result).toContain('Active Claude Threads');
+    expect(result).toContain('Mention me to start a session');
+  });
+
+  it('minimal mode renders the status bar without sessions list / footer / hint', async () => {
+    const session = createMockSession({ sessionTitle: 'My session' });
+    const sessions = new Map([[session.sessionId, session]]);
+    const minimalConfig: StickyMessageConfig = { ...testConfig, overhead: 'minimal' };
+    const result = await buildStickyMessage(sessions, 'test-platform', minimalConfig, mockFormatter, (t) => `/_redirect/pl/${t}`);
+
+    // Status bar marker still present (session count chip is in there)
+    expect(result).toContain('1/5 sessions');
+
+    // Heavy bits stripped
+    expect(result).not.toContain('Active Claude Threads');
+    expect(result).not.toContain('Mention me to start a session');
+    expect(result).not.toContain('My session');
+  });
+});
+
+describe('updateStickyMessage (overhead: hidden)', () => {
+  beforeEach(() => {
+    setShuttingDown(false);
+  });
+
+  it('hidden mode does not call createPost', async () => {
+    const createPost = mock(() => Promise.resolve({ id: 'should-not-be-created', message: '', userId: 'bot' }));
+    const updatePost = mock(() => Promise.resolve());
+    const getPost = mock(() => Promise.resolve(null));
+    const getBotUser = mock(() => Promise.resolve({ id: 'bot', username: 'bot' }));
+    const getPinnedPosts = mock(() => Promise.resolve([]));
+    const unpinPost = mock(() => Promise.resolve());
+    const deletePost = mock(() => Promise.resolve());
+    const getFormatter = mock(() => mockFormatter);
+
+    const platform = {
+      ...createMockPlatform('test-platform'),
+      createPost,
+      updatePost,
+      getPost,
+      getBotUser,
+      getPinnedPosts,
+      unpinPost,
+      deletePost,
+      getFormatter,
+    } as unknown as PlatformClient;
+
+    // Empty session store so the cleanup branch has nothing to do.
+    // `removeStickyPostId` must be stubbed because earlier tests in this file
+    // populate the module-level `stickyPostIds` map; when the hidden-mode
+    // cleanup runs and finds a leftover entry, it calls
+    // `sessionStore.removeStickyPostId(...)`. Without the stub the test fails
+    // with `removeStickyPostId is not a function` instead of exercising the
+    // hidden short-circuit. Hard-failing on an unexpected call here would
+    // surface a real regression.
+    initialize({
+      getStickyPostIds: mock(() => new Map()),
+      saveStickyPostId: mock(() => {}),
+      removeStickyPostId: mock(() => {}),
+      getHistory: mock(() => []),
+      load: mock(() => new Map()),
+    } as any);
+
+    await updateStickyMessage(platform, new Map(), { ...testConfig, overhead: 'hidden' });
+
+    expect(createPost).not.toHaveBeenCalled();
+    expect(updatePost).not.toHaveBeenCalled();
+  });
+
+  it('hidden mode cleans up leftover sticky via removeStickyPostId, NOT saveStickyPostId("")', async () => {
+    // Regression for the data-corruption bug: hidden cleanup used to call
+    // `saveStickyPostId(platformId, '')`, which writes an empty string into
+    // sessions.json. On the next bot start that empty string surfaces as a
+    // phantom sticky id and triggers unpin/delete calls against ''.
+    // The fix uses `removeStickyPostId`. Assert both: removeStickyPostId IS
+    // called, saveStickyPostId is NOT.
+    const platformId = 'leftover-platform';
+    const leftoverId = 'old-sticky-from-prior-run';
+    const unpinPost = mock(() => Promise.resolve());
+    const deletePost = mock(() => Promise.resolve());
+    const getBotUser = mock(() => Promise.resolve({ id: 'bot', username: 'bot' }));
+    const getPinnedPosts = mock(() => Promise.resolve([]));
+    const getFormatter = mock(() => mockFormatter);
+
+    const platform = {
+      ...createMockPlatform(platformId),
+      unpinPost,
+      deletePost,
+      getBotUser,
+      getPinnedPosts,
+      getFormatter,
+    } as unknown as PlatformClient;
+
+    const removeStickyPostId = mock(() => {});
+    const saveStickyPostId = mock(() => {});
+    initialize({
+      // Returns a leftover sticky for this platform — forces the cleanup
+      // branch to fire on the first hidden-mode call.
+      getStickyPostIds: mock(() => new Map([[platformId, leftoverId]])),
+      saveStickyPostId,
+      removeStickyPostId,
+      getHistory: mock(() => []),
+      load: mock(() => new Map()),
+    } as any);
+
+    await updateStickyMessage(platform, new Map(), { ...testConfig, overhead: 'hidden' });
+
+    // The leftover post is unpinned and deleted on the platform side
+    expect(unpinPost).toHaveBeenCalledWith(leftoverId);
+    expect(deletePost).toHaveBeenCalledWith(leftoverId);
+    // And the persistence side uses removeStickyPostId, NOT saveStickyPostId('')
+    expect(removeStickyPostId).toHaveBeenCalledWith(platformId);
+    expect(saveStickyPostId).not.toHaveBeenCalled();
+  });
 });

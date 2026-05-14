@@ -13,7 +13,8 @@ import {
   isSessionRestarting,
   isSessionCancelled,
 } from './types.js';
-import type { PermissionMode } from '../config/index.js';
+import type { OverheadVisibility, PermissionMode } from '../config/index.js';
+import { DEFAULT_OVERHEAD_VISIBILITY } from '../config/index.js';
 import { clearAllTimers } from './timer-manager.js';
 import type { PlatformClient, PlatformFile } from '../platform/index.js';
 import type { ClaudeCliOptions, ClaudeEvent, RateLimitHit } from '../claude/cli.js';
@@ -727,6 +728,61 @@ export function maybeInjectMetadataReminder(
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolve the effective per-thread session-header mode for a *resumed*
+ * session.
+ *
+ * Precedence (highest first):
+ *   1. `persisted` — the mode the session ran under before the bot restart.
+ *      Important: if the user explicitly set `hidden` on the original
+ *      session, we honor it on resume even if the platform config has since
+ *      flipped back to `full`.
+ *   2. `platformConfigured` — current platform-level setting. Used when
+ *      `persisted` is absent (old `sessions.json` predating the field).
+ *   3. DEFAULT (`'full'`).
+ *
+ * No `hidden`-needs-`replyToPostId` check here: resumed sessions already
+ * have a `threadId`, so the constraint that motivates the downgrade in
+ * `resolveSessionHeaderMode` does not apply.
+ */
+export function resumeSessionHeaderMode(
+  persisted: OverheadVisibility | undefined,
+  platformConfigured: OverheadVisibility | undefined,
+): OverheadVisibility {
+  return persisted ?? platformConfigured ?? DEFAULT_OVERHEAD_VISIBILITY;
+}
+
+/**
+ * Resolve the effective per-thread session-header mode at session start.
+ *
+ * Rules:
+ *  - `undefined` (platform never registered overhead) → DEFAULT (`'full'`).
+ *  - `'hidden'` requires `replyToPostId`. If absent we degrade to `'minimal'`
+ *    and log an error: better than silently posting the big header the user
+ *    asked to hide. The bot's own message router (`message-handler.ts:59`,
+ *    `post.rootId || post.id`) always supplies one, so this branch is
+ *    defensive — but if it fires, the user gets a one-liner, not a table.
+ *  - All other values pass through unchanged.
+ *
+ * Pure function — extracted from `startSession` so it can be tested without
+ * the heavy harness around session start (ClaudeCli, MessageManager, etc.).
+ */
+export function resolveSessionHeaderMode(
+  configured: OverheadVisibility | undefined,
+  replyToPostId: string | undefined,
+  platformId: string,
+): OverheadVisibility {
+  const mode = configured ?? DEFAULT_OVERHEAD_VISIBILITY;
+  if (mode === 'hidden' && !replyToPostId) {
+    log.error(
+      `sessionHeader: hidden requires a replyToPostId for ${platformId}; ` +
+      `downgrading this session to 'minimal' so the header post is still short.`
+    );
+    return 'minimal';
+  }
+  return mode;
+}
+
+/**
  * Create a new session for a thread.
  *
  * @param options - Session options including the initial prompt
@@ -787,21 +843,36 @@ export async function startSession(
   // path releases after the session is committed to the sessions map.
   pendingStartsCount++;
 
-  // Post initial session message (kept short to minimize popup notification size)
-  // The full session info is shown when updateSessionHeader() is called shortly after
-  const startFormatter = platform.getFormatter();
-  const startPost = await withErrorHandling(
-    () => platform.createPost(
-      startFormatter.formatItalic('Claude Threads session starting...'),
-      replyToPostId
-    ),
-    { action: 'Create session post' }
+  // Resolve per-platform header visibility once. See `resolveSessionHeaderMode`
+  // for the rules — extracted so it's testable without spinning up a full
+  // `startSession` (which would require mocking ClaudeCli, MessageManager, etc.).
+  const sessionHeaderMode = resolveSessionHeaderMode(
+    ctx.ops.getPlatformOverhead(platformId).sessionHeader,
+    replyToPostId,
+    platformId,
   );
-  if (!startPost) {
-    releasePendingStart();
-    return;
+
+  // Post initial session message (kept short to minimize popup notification size).
+  // The full session info is shown when updateSessionHeader() is called shortly after.
+  // For `hidden` we skip this — Claude's first response will be the first reply
+  // in the thread, anchored at `replyToPostId`.
+  const startFormatter = platform.getFormatter();
+  const skipHeaderPost = sessionHeaderMode === 'hidden';
+  let startPost: { id: string } | undefined;
+  if (!skipHeaderPost) {
+    startPost = await withErrorHandling(
+      () => platform.createPost(
+        startFormatter.formatItalic('Claude Threads session starting...'),
+        replyToPostId
+      ),
+      { action: 'Create session post' }
+    );
+    if (!startPost) {
+      releasePendingStart();
+      return;
+    }
   }
-  const actualThreadId = replyToPostId || startPost.id;
+  const actualThreadId = replyToPostId || (startPost ? startPost.id : '');
   const sessionId = ctx.ops.getSessionId(platformId, actualThreadId);
 
   // Start typing indicator early so user sees activity during session setup
@@ -835,14 +906,24 @@ export async function startSession(
     const resolvedDir = resolve(requestedDir);
 
     if (!existsSync(resolvedDir)) {
-      await platform.updatePost(startPost.id, `❌ Directory does not exist: ${formatter.formatCode(initialOptions.workingDir)}`);
+      const msg = `❌ Directory does not exist: ${formatter.formatCode(initialOptions.workingDir)}`;
+      if (startPost) {
+        await platform.updatePost(startPost.id, msg);
+      } else {
+        await platform.createPost(msg, replyToPostId);
+      }
       releasePendingStart();
       return;
     }
 
     const { statSync } = await import('fs');
     if (!statSync(resolvedDir).isDirectory()) {
-      await platform.updatePost(startPost.id, `❌ Not a directory: ${formatter.formatCode(initialOptions.workingDir)}`);
+      const msg = `❌ Not a directory: ${formatter.formatCode(initialOptions.workingDir)}`;
+      if (startPost) {
+        await platform.updatePost(startPost.id, msg);
+      } else {
+        await platform.createPost(msg, replyToPostId);
+      }
       releasePendingStart();
       return;
     }
@@ -941,7 +1022,8 @@ export async function startSession(
     sessionAllowedUsers: new Set([username]),
     forceInteractivePermissions,
     permissionModeOverride: sessionPermissionModeOverride,
-    sessionStartPostId: startPost.id,
+    sessionStartPostId: startPost ? startPost.id : null,
+    sessionHeaderMode,
     // NOTE: Task state (tasksPostId, lastTasksContent, etc.) is now managed by MessageManager.
     // These fields are intentionally NOT initialized here - MessageManager is the source of truth.
     timers: createSessionTimers(),
@@ -970,7 +1052,9 @@ export async function startSession(
   // entry is now in the map and counted by .size.
   mutableSessions(ctx).set(sessionId, session);
   releasePendingStart();
-  ctx.ops.registerPost(startPost.id, actualThreadId);
+  if (startPost) {
+    ctx.ops.registerPost(startPost.id, actualThreadId);
+  }
   ctx.ops.emitSessionAdd(session);
   sessionLog(session).info(`▶ Session started by @${username}`);
 
@@ -1209,6 +1293,10 @@ export async function resumeSession(
     sessionAllowedUsers: new Set(state.sessionAllowedUsers),
     forceInteractivePermissions: state.forceInteractivePermissions ?? false,
     sessionStartPostId: state.sessionStartPostId ?? null,
+    sessionHeaderMode: resumeSessionHeaderMode(
+      state.sessionHeaderMode,
+      ctx.ops.getPlatformOverhead(platformId).sessionHeader,
+    ),
     // NOTE: Task state (tasksPostId, lastTasksContent, etc.) is now managed by MessageManager.
     // These fields are NOT set here - MessageManager is hydrated with them below.
     timers: createSessionTimers(),
