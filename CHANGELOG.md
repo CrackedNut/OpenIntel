@@ -7,8 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-05-14
+
 ### Added
-- **Per-platform channel-verbosity controls.** New `sessionHeader` and `stickyMessage` settings, both `full` (default) / `minimal` (one-line status bar) / `hidden` (no post). Reachable three ways: setup wizard ("How verbose should the bot be in this channel?"), CLI flags (`--session-header`, `--sticky-message`, applied to every platform), or per-platform YAML for split values. `hidden` for the header means Claude's reply is the first message in the thread; `hidden` for the sticky stops the `channel_post` bump entirely. Update notices still ride along in `minimal`. Session-header mode persists per session — resume preserves the user's choice. Old `sessions.json` defaults to `full`. The pre-existing top-level `stickyMessage: { description, footer }` block is unchanged. (#383)
+- **Per-platform channel-verbosity controls.** New `sessionHeader` and `stickyMessage` settings, both `full` (default) / `minimal` (one-line status bar) / `hidden` (no post). Reachable three ways: setup wizard ("How verbose should the bot be in this channel?"), CLI flags (`--session-header`, `--sticky-message`, applied to every platform), or per-platform YAML for split values. `hidden` for the header means Claude's reply is the first message in the thread; `hidden` for the sticky stops the `channel_post` bump entirely. Update notices still ride along in `minimal`. Session-header mode persists per session — resume preserves the user's choice. Old `sessions.json` defaults to `full`. The pre-existing top-level `stickyMessage: { description, footer }` block is unchanged. (#384, closes #383)
+
+### Security
+- **`ws` 8.20.0 → 8.20.1** picks up a fix for an uninitialized memory disclosure in `websocket.close()`. Triggered when a `TypedArray` (e.g. `Float32Array`) is passed as the `reason` argument instead of a string or `Buffer` — uninitialized memory was leaked to the remote peer. claude-threads doesn't pass typed arrays to `close()` anywhere we control, but the Mattermost client and inbound webhook surface use `ws` as a transitive dependency. (#382)
+
+### Changed
+- **Production deps** bumped: `@hono/node-server` 2.0.1 → 2.0.2 (serve-static fixes), `react` 19.2.5 → 19.2.6 (RSC type hardening), `semver` 7.7.4 → 7.8.0 (new `truncate` function), `ink-scroll-view` 0.3.6 → 0.3.7. Lockfile-only. (#382)
+- **Dev deps** bumped: `@types/node` 25.6.0 → 25.7.0, `lint-staged` 16.4.0 → 17.0.4, `typescript-eslint` 8.59.2 → 8.59.3. lint-staged 17 drops Node 20 support, but it's a dev dep — the bot's runtime floor is unchanged. Lockfile-only. (#381)
 
 ## [1.15.2] - 2026-05-06
 
