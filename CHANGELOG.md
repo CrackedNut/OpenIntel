@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **hono 4.12.18 → 4.12.21** picks up four upstream security fixes: GHSA-2gcr-mfcq-wcc3 (`app.mount()` stripped the mount prefix from the raw, undecoded pathname, so percent-encoded paths could be cut at the wrong offset and reach a sub-app with the wrong path), GHSA-xrhx-7g5j-rcj5 (`hono/ip-restriction` compared IPs by string equality, so non-canonical IPv6 forms such as compressed or hex IPv4-mapped addresses slipped past static deny rules), GHSA-3hrh-pfw6-9m5x (the cookie helper didn't sanitize `sameSite`/`priority`, allowing Set-Cookie injection via `;`, `\r`, `\n`), and GHSA-f577-qrjj-4474 (`hono/jwt` accepted any two-part Authorization header regardless of scheme, not just `Bearer`). claude-threads reaches hono through `@hono/node-server` on the inbound webhook surface, so the mount-prefix and Set-Cookie fixes are the relevant ones. (#386)
+
+### Changed
+- **Production deps** bumped: `@hono/node-server` 2.0.2 → 2.0.3 (preserves headers mutated after raw Response construction), `express-rate-limit` 8.5.1 → 8.5.2 (simplified IPv6 key generation). Lockfile-only. (#386)
+- **Dev deps** bumped: `@types/bun` 1.3.13 → 1.3.14, `@types/node` 25.7.0 → 25.9.1, `@types/react` 19.2.14 → 19.2.15, `eslint` 10.3.0 → 10.4.0 (adds `includeIgnoreFile()` and a `for-direction` sequence-expression check, both additive), `lint-staged` 17.0.4 → 17.0.5, `typescript-eslint` 8.59.3 → 8.59.4 (fixes a `no-floating-promises` stack overflow on recursive types). Lockfile-only. (#385)
+
 ## [1.16.0] - 2026-05-14
 
 ### Added
