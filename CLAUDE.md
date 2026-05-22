@@ -24,6 +24,10 @@ This is a multi-platform bot that lets users interact with Claude Code through c
 - Automatic idle session cleanup
 - **Permalink follower (`read_post` MCP tool)** - Claude can resolve a Mattermost or Slack permalink to its content (and optional thread context) inside the bot's own channel
 
+## Contribution Conventions
+
+- **Pull request titles and bodies are written in English.** This is an open-source project with an international audience, so PRs stay in English even though commit messages may be in Dutch. Keep the CHANGELOG in English as well.
+
 ## Architecture Overview
 
 ```
