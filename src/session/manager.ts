@@ -17,7 +17,7 @@ import { ClaudeEvent } from '../claude/cli.js';
 import type { PlatformClient, PlatformUser, PlatformPost, PlatformFile } from '../platform/index.js';
 import { SessionStore, PersistedSession, PersistedContextPrompt } from '../persistence/session-store.js';
 import { GitHubEmailsStore } from '../persistence/github-emails-store.js';
-import { WorktreeMode, type AgentPersonaConfig, type LimitsConfig, type ResolvedLimits, type ClaudeAccount, type PermissionMode, type OverheadVisibility, type PlatformOverhead, DEFAULT_OVERHEAD_VISIBILITY, resolveLimits, effectivePermissionMode } from '../config/index.js';
+import { WorktreeMode, type AgentPersonaConfig, type SkillsIndexConfig, type LimitsConfig, type ResolvedLimits, type ClaudeAccount, type PermissionMode, type OverheadVisibility, type PlatformOverhead, DEFAULT_OVERHEAD_VISIBILITY, resolveLimits, effectivePermissionMode } from '../config/index.js';
 import { AccountPool } from '../claude/account-pool.js';
 import type { SessionInfo } from '../ui/types.js';
 import { CleanupScheduler } from '../cleanup/index.js';
@@ -117,6 +117,10 @@ export class SessionManager extends EventEmitter {
   // session spawn without a bot restart.
   private readonly agentPersona?: AgentPersonaConfig;
 
+  // Optional skills-index block listing ~/.claude/skills/* by name +
+  // description. Reads are cached by mtime inside the builder.
+  private readonly skillsIndex?: SkillsIndexConfig;
+
   constructor(
     workingDir: string,
     /**
@@ -135,6 +139,7 @@ export class SessionManager extends EventEmitter {
     limits?: LimitsConfig,
     claudeAccounts?: ClaudeAccount[],
     agentPersona?: AgentPersonaConfig,
+    skillsIndex?: SkillsIndexConfig,
   ) {
     super();
     this.workingDir = workingDir;
@@ -152,6 +157,7 @@ export class SessionManager extends EventEmitter {
     this.registry = new SessionRegistry(this.sessionStore);
     this.accountPool = new AccountPool(claudeAccounts);
     this.agentPersona = agentPersona;
+    this.skillsIndex = skillsIndex;
 
     // Create background tasks (started in initialize())
     this.sessionMonitor = new SessionMonitor({
@@ -291,6 +297,7 @@ export class SessionManager extends EventEmitter {
       permissionTimeoutMs: this.limits.permissionTimeoutSeconds * 1000,
       flushDelayMs: this.limits.flushDelayMs,
       agentPersona: this.agentPersona,
+      skillsIndex: this.skillsIndex,
     };
 
     const state: SessionState = {
@@ -1285,6 +1292,7 @@ export class SessionManager extends EventEmitter {
       formatContextForClaude: (messages, summary) => contextPrompt.formatContextForClaude(messages, summary),
       appendSystemPrompt: CHAT_PLATFORM_PROMPT,
       agentPersona: this.agentPersona,
+      skillsIndex: this.skillsIndex,
       githubEmailsStore: this.githubEmailsStore,
       registerPost: (postId, tid) => this.registerPost(postId, tid),
       updateStickyMessage: () => this.updateStickyMessage(),

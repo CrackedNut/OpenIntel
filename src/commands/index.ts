@@ -65,3 +65,9 @@ export {
   buildAgentPersonaText,
   _clearAgentPersonaCache,
 } from './agent-persona-builder.js';
+
+// Skills index — lists ~/.claude/skills/*/SKILL.md by name + description.
+export {
+  buildSkillsIndexText,
+  _clearSkillsIndexCache,
+} from './skills-index-builder.js';

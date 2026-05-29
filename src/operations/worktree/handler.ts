@@ -6,7 +6,7 @@
 
 import type { Session } from '../../session/types.js';
 import { transitionTo } from '../../session/types.js';
-import type { AgentPersonaConfig, WorktreeMode, PermissionMode } from '../../config/index.js';
+import type { AgentPersonaConfig, SkillsIndexConfig, WorktreeMode, PermissionMode } from '../../config/index.js';
 import { effectivePermissionMode } from '../../config/index.js';
 import type { PlatformFile } from '../../platform/index.js';
 import { suggestBranchNames } from '../suggestions/branch.js';
@@ -413,6 +413,7 @@ export async function createAndSwitchToWorktree(
     formatContextForClaude: (messages: ThreadMessage[], previousWorkSummary?: string) => string;
     appendSystemPrompt?: string;
     agentPersona?: AgentPersonaConfig;
+    skillsIndex?: SkillsIndexConfig;
     githubEmailsStore: { get(platformId: string, username: string): string | undefined };
     registerPost: (postId: string, threadId: string) => void;
     updateStickyMessage: () => Promise<void>;
@@ -517,7 +518,7 @@ export async function createAndSwitchToWorktree(
             session.sessionAllowedUsers,
             options.appendSystemPrompt ?? '',
             options.githubEmailsStore,
-            { omitSessionContext: !needsTitlePrompt, agentPersona: options.agentPersona },
+            { omitSessionContext: !needsTitlePrompt, agentPersona: options.agentPersona, skillsIndex: options.skillsIndex },
           ),
         };
         session.claude = new ClaudeCli(cliOptions);
@@ -677,7 +678,7 @@ export async function createAndSwitchToWorktree(
           session.sessionAllowedUsers,
           options.appendSystemPrompt ?? '',
           options.githubEmailsStore,
-          { omitSessionContext: !needsTitlePrompt, agentPersona: options.agentPersona },
+          { omitSessionContext: !needsTitlePrompt, agentPersona: options.agentPersona, skillsIndex: options.skillsIndex },
         ),
       };
       session.claude = new ClaudeCli(cliOptions);

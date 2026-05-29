@@ -14,8 +14,9 @@ import {
 } from './registry.js';
 import type { PlatformClient } from '../platform/client.js';
 import type { GitHubEmailsStore } from '../persistence/github-emails-store.js';
-import type { AgentPersonaConfig } from '../config/types.js';
+import type { AgentPersonaConfig, SkillsIndexConfig } from '../config/types.js';
 import { buildAgentPersonaText } from './agent-persona-builder.js';
+import { buildSkillsIndexText } from './skills-index-builder.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('system-prompt');
@@ -207,7 +208,11 @@ export async function buildAppendSystemPrompt(
   allowedUsers: Iterable<string>,
   staticChatPlatformPrompt: string,
   githubEmailsStore: Pick<GitHubEmailsStore, 'get'>,
-  options?: { omitSessionContext?: boolean; agentPersona?: AgentPersonaConfig },
+  options?: {
+    omitSessionContext?: boolean;
+    agentPersona?: AgentPersonaConfig;
+    skillsIndex?: SkillsIndexConfig;
+  },
 ): Promise<string> {
   const collaborators = await resolveCollaborators(
     platform,
@@ -222,6 +227,13 @@ export async function buildAppendSystemPrompt(
   const personaText = buildAgentPersonaText(options?.agentPersona);
   if (personaText) {
     parts.push(personaText);
+  }
+  // Skills index lives in the stable layer (between persona and session
+  // context) so it shares the prefix-cache window — skills lists rarely
+  // change spawn-to-spawn.
+  const skillsText = buildSkillsIndexText(options?.skillsIndex);
+  if (skillsText) {
+    parts.push(skillsText);
   }
   if (!options?.omitSessionContext) {
     parts.push(buildSessionContext(platform, workingDir, threadId));

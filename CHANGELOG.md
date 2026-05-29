@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Skills index in the session system prompt.** New optional `skillsIndex` config block scans `<skillsDir>/<skill>/SKILL.md` files (default `~/.claude/skills`), parses the `description:` field from each frontmatter, and emits an `## Available skills` block before the session-context line. Claude sees the list of installed skills (name + one-line description) at spawn time, so it can pick the right one without searching first. Reads are mtime-cached so adding or editing a skill surfaces on the next spawn without a bot restart. Set `enabled: false` to disable; missing or empty dir → silently skipped.
+
 ## [1.16.1] - 2026-05-22
 
 ### Security

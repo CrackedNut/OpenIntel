@@ -12,6 +12,7 @@ export type {
   StickyMessageCustomization,
   ClaudeAccount,
   AgentPersonaConfig,
+  SkillsIndexConfig,
   Config,
   PlatformInstanceConfig,
   MattermostPlatformConfig,

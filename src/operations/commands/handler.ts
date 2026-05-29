@@ -407,7 +407,7 @@ export async function changeDirectory(
     session.sessionAllowedUsers,
     CHAT_PLATFORM_PROMPT,
     ctx.state.githubEmailsStore,
-    { agentPersona: ctx.config.agentPersona },
+    { agentPersona: ctx.config.agentPersona, skillsIndex: ctx.config.skillsIndex },
   );
 
   const cliOptions: ClaudeCliOptions = {

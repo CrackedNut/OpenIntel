@@ -203,6 +203,20 @@ export interface AgentPersonaConfig {
   projectsIndexDir?: string;
 }
 
+/**
+ * Optional skills-index prepend. Scans `<skillsDir>/<skill>/SKILL.md` files
+ * for their `description:` frontmatter and emits an `## Available skills`
+ * block in the session's system prompt — so Claude can pick the right skill
+ * by name without searching first.
+ *
+ * Default skillsDir: `~/.claude/skills`. Empty / missing dir → no block.
+ * Set `enabled: false` to disable entirely.
+ */
+export interface SkillsIndexConfig {
+  enabled?: boolean;
+  skillsDir?: string;
+}
+
 export interface Config {
   version: number;
   workingDir: string;
@@ -217,6 +231,8 @@ export interface Config {
   claudeAccounts?: ClaudeAccount[];
   /** Optional Hermes-style persona/directives/projects-index prepend. */
   agentPersona?: AgentPersonaConfig;
+  /** Optional skills-index prepend — lists `~/.claude/skills/*` by name+description. */
+  skillsIndex?: SkillsIndexConfig;
   platforms: PlatformInstanceConfig[];
 }
 
