@@ -206,6 +206,37 @@ describe('parseCommand', () => {
     });
   });
 
+  describe('queue and steer commands', () => {
+    test('parses !queue with a message', () => {
+      expect(parseCommand('!queue think about that')).toEqual({
+        command: 'queue',
+        args: 'think about that',
+        match: '!queue think about that',
+      });
+    });
+
+    test('parses !steer with a message', () => {
+      expect(parseCommand('!steer drop the migration plan')).toEqual({
+        command: 'steer',
+        args: 'drop the migration plan',
+        match: '!steer drop the migration plan',
+      });
+    });
+
+    test('preserves multi-line message after !queue', () => {
+      const text = '!queue line one\nline two';
+      const r = parseCommand(text);
+      expect(r?.command).toBe('queue');
+      expect(r?.args).toBe('line one\nline two');
+    });
+
+    test('bare !queue does not match the queue pattern (falls through to _dynamic)', () => {
+      const r = parseCommand('!queue');
+      expect(r?.command).toBe('queue');
+      expect(r?.args).toBeUndefined();
+    });
+  });
+
   describe('non-commands', () => {
     test('returns null for regular text', () => {
       expect(parseCommand('hello world')).toBeNull();

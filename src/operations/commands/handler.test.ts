@@ -655,6 +655,137 @@ describe('interruptSession', () => {
   });
 });
 
+describe('queueMessage', () => {
+  it('sends immediately when Claude is running but idle', async () => {
+    const mockPlatform = createMockPlatform();
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const session = createMockSession({
+      platform: mockPlatform,
+      isProcessing: false,
+    });
+    session.messageManager = {
+      ...session.messageManager,
+      handleUserMessage,
+    } as any;
+
+    await commands.queueMessage(session, 'fix the test', 'alice');
+
+    expect(handleUserMessage).toHaveBeenCalledWith('fix the test', undefined, 'alice');
+    expect(session.queuedUserMessages).toBeUndefined();
+  });
+
+  it('buffers when Claude is processing', async () => {
+    const mockPlatform = createMockPlatform();
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const session = createMockSession({
+      platform: mockPlatform,
+      isProcessing: true,
+    });
+    session.messageManager = {
+      ...session.messageManager,
+      handleUserMessage,
+    } as any;
+
+    await commands.queueMessage(session, 'first', 'alice');
+    await commands.queueMessage(session, 'second', 'bob');
+
+    expect(session.queuedUserMessages).toEqual(['first', 'second']);
+    expect(handleUserMessage).not.toHaveBeenCalled();
+    expect(mockPlatform.createPost).toHaveBeenCalled();
+  });
+
+  it('buffers when Claude is not running at all', async () => {
+    const mockPlatform = createMockPlatform();
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const session = createMockSession({
+      platform: mockPlatform,
+      isProcessing: false,
+      claude: {
+        isRunning: mock(() => false),
+        interrupt: mock(() => false),
+      } as any,
+    });
+    session.messageManager = {
+      ...session.messageManager,
+      handleUserMessage,
+    } as any;
+
+    await commands.queueMessage(session, 'wake me up', 'alice');
+
+    expect(session.queuedUserMessages).toEqual(['wake me up']);
+    expect(handleUserMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('steerSession', () => {
+  it('interrupts Claude and enqueues a STEER-prefixed message when processing', async () => {
+    const mockPlatform = createMockPlatform();
+    const interrupt = mock(() => true);
+    const session = createMockSession({
+      platform: mockPlatform,
+      isProcessing: true,
+      claude: {
+        isRunning: mock(() => true),
+        interrupt,
+      } as any,
+    });
+
+    await commands.steerSession(session, 'pivot to bug fix', 'alice');
+
+    expect(interrupt).toHaveBeenCalled();
+    expect(session.lifecycle.state).toBe('interrupted');
+    expect(session.queuedUserMessages).toEqual(['STEER: pivot to bug fix']);
+  });
+
+  it('sends inline (no interrupt) when Claude is idle', async () => {
+    const mockPlatform = createMockPlatform();
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const interrupt = mock(() => true);
+    const session = createMockSession({
+      platform: mockPlatform,
+      isProcessing: false,
+      claude: {
+        isRunning: mock(() => true),
+        interrupt,
+      } as any,
+    });
+    session.messageManager = {
+      ...session.messageManager,
+      handleUserMessage,
+    } as any;
+
+    await commands.steerSession(session, 'change of plans', 'alice');
+
+    expect(interrupt).not.toHaveBeenCalled();
+    expect(handleUserMessage).toHaveBeenCalledWith('STEER: change of plans', undefined, 'alice');
+    expect(session.queuedUserMessages).toBeUndefined();
+  });
+
+  it('queues without interrupt when Claude is not running (paused)', async () => {
+    const mockPlatform = createMockPlatform();
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    const interrupt = mock(() => false);
+    const session = createMockSession({
+      platform: mockPlatform,
+      isProcessing: false,
+      claude: {
+        isRunning: mock(() => false),
+        interrupt,
+      } as any,
+    });
+    session.messageManager = {
+      ...session.messageManager,
+      handleUserMessage,
+    } as any;
+
+    await commands.steerSession(session, 'pivot', 'alice');
+
+    expect(interrupt).not.toHaveBeenCalled();
+    expect(handleUserMessage).not.toHaveBeenCalled();
+    expect(session.queuedUserMessages).toEqual(['STEER: pivot']);
+  });
+});
+
 describe('approvePendingPlan', () => {
   it('approves pending plan and sends message to Claude', async () => {
     const mockPlatform = createMockPlatform();

@@ -1332,6 +1332,11 @@ export async function resumeSession(
     isProcessing: false,  // Resumed sessions are idle until user sends a message
     lifecyclePostId: state.lifecyclePostId,  // Pass through for resume message handling
     recentEvents: [],  // Bug report context: recent tool uses/errors (cleared on resume)
+    // Restore any user messages that were queued via !queue / !steer but not
+    // delivered before the previous bot lifetime ended. They'll be flushed by
+    // the next `result` event after Claude finishes its current turn (or by
+    // the explicit follow-up if the resumed session is idle).
+    queuedUserMessages: state.queuedUserMessages ? [...state.queuedUserMessages] : undefined,
     // Thread logger for persisting events to disk (appends to existing log)
     threadLogger: createThreadLogger(platformId, state.threadId, state.claudeSessionId, {
       enabled: ctx.config.threadLogsEnabled ?? true,

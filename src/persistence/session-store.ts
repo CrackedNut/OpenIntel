@@ -91,6 +91,14 @@ export interface PersistedSession {
    * this field and resume with `'full'` (today's behavior).
    */
   sessionHeaderMode?: OverheadVisibility;
+  /**
+   * User messages queued via `!queue` / `!steer` that hadn't been delivered
+   * to Claude yet when the bot last persisted. Optional for backward
+   * compatibility — old `sessions.json` files predate this field. Restored
+   * onto `Session.queuedUserMessages` at resume so an interrupted queue
+   * doesn't vanish.
+   */
+  queuedUserMessages?: string[];
 }
 
 /**

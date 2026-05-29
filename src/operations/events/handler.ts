@@ -235,12 +235,17 @@ export function handleEventPostProcessing(
     }
   }
 
-  // Handle result events - stop typing, update UI, extract usage
+  // Handle result events - stop typing, update UI, extract usage, flush queued msgs
   if (event.type === 'result') {
     ctx.ops.stopTyping(session);
     session.isProcessing = false;
     ctx.ops.emitSessionUpdate(session.sessionId, { status: getSessionStatus(session) });
     updateUsageStats(session, event, ctx);
+    // Deliver any messages that were buffered via `!queue` / `!steer` while
+    // Claude was processing. Joined with blank lines so Claude sees them as
+    // one coherent follow-up. Fire-and-forget — the post is recoverable from
+    // logs if it fails, and we don't want to block the result-event pipeline.
+    void flushQueuedUserMessages(session, ctx);
   }
 
   // Track tool errors for bug reporting context
@@ -259,6 +264,40 @@ export function handleEventPostProcessing(
     }
   }
 
+}
+
+/**
+ * Deliver buffered `!queue` / `!steer` messages now that Claude's turn ended.
+ *
+ * Joins the queue with blank lines so multiple buffered messages arrive as a
+ * single coherent follow-up rather than fragmenting into several turns. The
+ * queue is cleared (and persisted) BEFORE the follow-up is dispatched so a
+ * crash mid-dispatch doesn't loop the same message.
+ */
+async function flushQueuedUserMessages(
+  session: Session,
+  ctx: SessionContext,
+): Promise<void> {
+  const queue = session.queuedUserMessages;
+  if (!queue || queue.length === 0) return;
+  const joined = queue.join('\n\n');
+  session.queuedUserMessages = undefined;
+  try {
+    ctx.ops.persistSession(session);
+  } catch {
+    // Persistence failures are non-fatal; the in-memory clear stands.
+  }
+  try {
+    await session.messageManager?.handleUserMessage(
+      joined,
+      undefined,
+      session.startedBy,
+    );
+  } catch {
+    // Swallowed: this runs from the event pipeline and we don't want to
+    // bring the session down on a follow-up dispatch error. The message
+    // already lives in the thread log.
+  }
 }
 
 // ---------------------------------------------------------------------------

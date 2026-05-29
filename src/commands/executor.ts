@@ -111,6 +111,46 @@ const handleStop: CommandHandler = async (ctx) => {
 };
 
 /**
+ * Handle !queue command — buffer a user message to deliver when Claude's
+ * current turn ends. If Claude is idle the message is sent immediately as a
+ * follow-up, matching the user's "send this when Claude is free" intent.
+ */
+const handleQueue: CommandHandler = async (ctx, args) => {
+  if (ctx.commandContext === 'first-message') return { handled: false };
+  if (!ctx.isAllowed) return { handled: true };
+  if (!args || !args.trim()) {
+    await ctx.client.createPost(
+      `❌ Usage: ${ctx.formatter.formatCode('!queue <message>')}`,
+      ctx.threadId,
+    );
+    return { handled: true };
+  }
+  await ctx.sessionManager.queueMessage(ctx.threadId, args.trim(), ctx.username);
+  return { handled: true };
+};
+
+/**
+ * Handle !steer command — interrupt Claude and enqueue a redirect.
+ * Unlike `!queue`, `!steer` always interrupts (even if Claude is idle,
+ * in which case the redirect is delivered immediately) and wraps the
+ * message with a `STEER:` prefix so Claude reads it as a direction change
+ * rather than a follow-up question.
+ */
+const handleSteer: CommandHandler = async (ctx, args) => {
+  if (ctx.commandContext === 'first-message') return { handled: false };
+  if (!ctx.isAllowed) return { handled: true };
+  if (!args || !args.trim()) {
+    await ctx.client.createPost(
+      `❌ Usage: ${ctx.formatter.formatCode('!steer <message>')}`,
+      ctx.threadId,
+    );
+    return { handled: true };
+  }
+  await ctx.sessionManager.steerSession(ctx.threadId, args.trim(), ctx.username);
+  return { handled: true };
+};
+
+/**
  * Handle !escape command.
  */
 const handleEscape: CommandHandler = async (ctx) => {
@@ -495,6 +535,8 @@ handlers.set('release-notes', handleReleaseNotes);
 handlers.set('update', handleUpdate);
 handlers.set('stop', handleStop);
 handlers.set('escape', handleEscape);
+handlers.set('queue', handleQueue);
+handlers.set('steer', handleSteer);
 handlers.set('approve', handleApprove);
 handlers.set('invite', handleInvite);
 handlers.set('kick', handleKick);

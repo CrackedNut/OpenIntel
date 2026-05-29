@@ -320,4 +320,41 @@ describe('handleEventPostProcessing', () => {
 
   // NOTE: postCurrentQuestion tests have been removed - question posting now
   // goes through QuestionApprovalExecutor via MessageManager
+
+  test('flushes queued user messages on result event', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    session.messageManager = {
+      ...(session.messageManager ?? {}),
+      handleUserMessage,
+    } as unknown as typeof session.messageManager;
+    session.queuedUserMessages = ['first', 'STEER: pivot'];
+
+    handleEventPostProcessing(session, { type: 'result' }, ctx);
+
+    // Synchronous part: clears the buffer and persists.
+    expect(session.queuedUserMessages).toBeUndefined();
+    expect(ctx.ops.persistSession).toHaveBeenCalled();
+
+    // Async dispatch: handleUserMessage is called with messages joined by blank lines.
+    await new Promise(r => setTimeout(r, 0));
+    expect(handleUserMessage).toHaveBeenCalledWith(
+      'first\n\nSTEER: pivot',
+      undefined,
+      session.startedBy,
+    );
+  });
+
+  test('does not call handleUserMessage when queue is empty', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    session.messageManager = {
+      ...(session.messageManager ?? {}),
+      handleUserMessage,
+    } as unknown as typeof session.messageManager;
+    session.queuedUserMessages = undefined;
+
+    handleEventPostProcessing(session, { type: 'result' }, ctx);
+
+    await new Promise(r => setTimeout(r, 0));
+    expect(handleUserMessage).not.toHaveBeenCalled();
+  });
 });
