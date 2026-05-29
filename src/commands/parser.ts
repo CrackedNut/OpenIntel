@@ -51,6 +51,8 @@ const COMMAND_PATTERNS: Array<[string, RegExp]> = [
   // Session control
   ['stop', /^!(?:stop|cancel)\s*$/i],
   ['escape', /^!(?:escape|interrupt)\s*$/i],
+  ['queue', /^!queue\s+(.+)$/is],
+  ['steer', /^!steer\s+(.+)$/is],
   ['approve', /^!(?:approve|yes)\s*$/i],
   ['help', /^!help\s*$/i],
   ['release-notes', /^!(?:release-notes|changelog)\s*$/i],

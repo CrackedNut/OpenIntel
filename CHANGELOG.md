@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`!queue` and `!steer` for talking to Claude mid-task.** `!queue <msg>` buffers a user message and delivers it as a follow-up when Claude's current turn ends — multiple `!queue` commands stack and arrive joined by blank lines so Claude sees one coherent next prompt. If Claude is already idle, the queue path short-circuits and the message is sent straight away. `!steer <msg>` is the redirect primitive: it interrupts Claude (same plumbing as `!escape`) and wraps the message with a `STEER:` prefix so Claude reads it as a course correction rather than a follow-up question; the result-event flush picks up the queued steer once Claude's SIGINT-triggered exit lands. The buffer (`Session.queuedUserMessages`) persists to `sessions.json`, so an interrupted queue survives a bot restart and resume continues to drain it. Both commands are user-only and disallowed in first-message context (a session must already exist to queue against).
+
 ## [1.16.1] - 2026-05-22
 
 ### Security

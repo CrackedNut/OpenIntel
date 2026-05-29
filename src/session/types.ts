@@ -391,6 +391,19 @@ export interface Session {
    * Always present in running sessions.
    */
   messageManager?: MessageManager;
+
+  /**
+   * Buffer of user messages queued while Claude was processing.
+   *
+   * `!queue <msg>` appends; `!steer <msg>` interrupts Claude and prepends a
+   * `STEER: …` marker so Claude sees it as a redirect rather than a follow-up.
+   * The buffer is joined with `\n\n` and delivered as a single follow-up
+   * when Claude's current turn ends (see `flushQueuedMessages` in
+   * `operations/events/handler.ts`). Persisted across bot restart via
+   * `PersistedSession.queuedUserMessages` so an interrupted queue doesn't
+   * vanish on resume.
+   */
+  queuedUserMessages?: string[];
 }
 
 // =============================================================================

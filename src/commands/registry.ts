@@ -146,6 +146,22 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
     claudeNotes: 'Would interrupt your own session - do not use',
   },
   {
+    command: 'queue',
+    description: "Queue a message — Claude will receive it when its current turn ends",
+    args: '<message>',
+    category: 'session',
+    audience: 'user',
+    claudeNotes: 'User-only mid-task buffering — do not invoke',
+  },
+  {
+    command: 'steer',
+    description: 'Interrupt and redirect with a new message (Claude sees a STEER: prefix)',
+    args: '<message>',
+    category: 'session',
+    audience: 'user',
+    claudeNotes: 'User-only redirect primitive — do not invoke',
+  },
+  {
     command: 'approve',
     description: 'Approve pending plan (alternative to 👍 reaction)',
     category: 'session',

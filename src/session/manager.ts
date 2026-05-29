@@ -647,6 +647,7 @@ export class SessionManager extends EventEmitter {
       resumeFailCount: session.lifecycle.resumeFailCount,
       claudeAccountId: session.claudeAccountId,
       sessionHeaderMode: session.sessionHeaderMode,
+      queuedUserMessages: session.queuedUserMessages,
     };
     this.sessionStore.save(session.sessionId, state);
   }
@@ -1047,6 +1048,28 @@ export class SessionManager extends EventEmitter {
     const session = this.findSessionByThreadId(threadId);
     if (!session) return;
     await commands.interruptSession(session, username);
+  }
+
+  /**
+   * Buffer a user message to deliver as a follow-up when Claude's current
+   * turn ends, or send it immediately if Claude is idle. Multiple `!queue`
+   * messages stack and are joined with blank lines.
+   */
+  async queueMessage(threadId: string, message: string, username: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await commands.queueMessage(session, message, username);
+  }
+
+  /**
+   * Interrupt Claude (if processing) and enqueue a redirect message wrapped
+   * in a `STEER:` marker so Claude reads it as a direction change. Persists
+   * the steer so an interrupted session resumes with the message intact.
+   */
+  async steerSession(threadId: string, message: string, username: string): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await commands.steerSession(session, message, username);
   }
 
   async approvePendingPlan(threadId: string, username: string): Promise<void> {

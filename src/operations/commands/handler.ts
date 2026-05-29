@@ -245,6 +245,106 @@ export async function interruptSession(
 }
 
 /**
+ * Buffer a user message to deliver as a single follow-up when Claude's
+ * current turn ends.
+ *
+ * - Claude is mid-turn (`session.isProcessing`): push onto the queue, post
+ *   a small "🕓 queued (N pending)" ack, and persist so an interrupted
+ *   queue survives a bot restart.
+ * - Claude is idle: send straight away as a follow-up. The user's intent
+ *   ("send this when Claude is free") is already satisfied, so we don't
+ *   make them wait for a phantom flush.
+ * - Claude isn't running at all (paused / interrupted / not yet started):
+ *   queue anyway. Resume will pick it up.
+ */
+export async function queueMessage(
+  session: Session,
+  message: string,
+  username: string,
+): Promise<void> {
+  session.threadLogger?.logCommand('queue', message.slice(0, 80), username);
+  const formatter = session.platform.getFormatter();
+
+  const claudeRunning = session.claude.isRunning();
+  if (claudeRunning && !session.isProcessing) {
+    // Hot path: Claude is up, between turns — send straight away.
+    await session.messageManager?.handleUserMessage(message, undefined, username);
+    sessionLog(session).info(`🟢 !queue sent immediately (Claude idle) by @${username}`);
+    return;
+  }
+
+  session.queuedUserMessages ??= [];
+  session.queuedUserMessages.push(message);
+  const pending = session.queuedUserMessages.length;
+  await post(
+    session,
+    'info',
+    `🕓 ${formatter.formatBold('Queued')} by ${formatter.formatUserMention(username)} — ${pending} pending. Delivered when Claude finishes.`,
+  );
+  sessionLog(session).info(`🕓 !queue buffered by @${username} (${pending} pending)`);
+}
+
+/**
+ * Interrupt Claude (if processing) and enqueue a redirect.
+ *
+ * Wraps the message in a `STEER: …` marker so Claude reads it as a course
+ * correction rather than a follow-up question. The actual delivery happens
+ * in the `result`-event flush in `events/handler.ts` — by the time Claude's
+ * SIGINT-triggered exit lands here, the queue is already populated.
+ *
+ * If Claude is idle the steer is sent inline (no interrupt needed); if it's
+ * not running at all (paused) the steer queues and resume picks it up.
+ */
+export async function steerSession(
+  session: Session,
+  message: string,
+  username: string,
+): Promise<void> {
+  session.threadLogger?.logCommand('steer', message.slice(0, 80), username);
+  const formatter = session.platform.getFormatter();
+  const wrapped = `STEER: ${message}`;
+
+  const claudeRunning = session.claude.isRunning();
+  if (claudeRunning && !session.isProcessing) {
+    // Idle: deliver immediately with the STEER prefix so Claude still sees
+    // the redirect framing.
+    await post(
+      session,
+      'interrupt',
+      `🧭 ${formatter.formatBold('Steering')} by ${formatter.formatUserMention(username)}`,
+    );
+    await session.messageManager?.handleUserMessage(wrapped, undefined, username);
+    sessionLog(session).info(`🧭 !steer sent inline (Claude idle) by @${username}`);
+    return;
+  }
+
+  // Enqueue before interrupting so the result-event flush sees the message.
+  session.queuedUserMessages ??= [];
+  session.queuedUserMessages.push(wrapped);
+
+  if (claudeRunning && session.isProcessing) {
+    transitionTo(session, 'interrupted');
+    const interrupted = session.claude.interrupt();
+    if (interrupted) {
+      await post(
+        session,
+        'interrupt',
+        `🧭 ${formatter.formatBold('Steering')} by ${formatter.formatUserMention(username)} — Claude will pivot when it lands.`,
+      );
+      sessionLog(session).info(`🧭 !steer interrupted Claude (by @${username})`);
+    }
+  } else {
+    // Paused/not-running: just acknowledge and let resume drain the queue.
+    await post(
+      session,
+      'info',
+      `🧭 ${formatter.formatBold('Steer queued')} by ${formatter.formatUserMention(username)} — Claude will pick it up on resume.`,
+    );
+    sessionLog(session).info(`🧭 !steer queued (Claude not running) by @${username}`);
+  }
+}
+
+/**
  * Approve a pending plan via text command (alternative to 👍 reaction).
  * This is useful when the emoji reaction doesn't work reliably.
  */

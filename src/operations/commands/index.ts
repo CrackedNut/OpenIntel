@@ -10,6 +10,8 @@ export {
   cancelSession,
   interruptSession,
   approvePendingPlan,
+  queueMessage,
+  steerSession,
 
   // Directory management
   changeDirectory,
