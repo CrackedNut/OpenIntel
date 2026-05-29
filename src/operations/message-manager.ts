@@ -462,15 +462,23 @@ export class MessageManager {
       contentBreaker: this.contentBreaker,
       threadLogger: this.session.threadLogger,
 
-      // Helper methods that combine create + register + track
+      // Helper methods that combine create + register + track.
+      // Channel-mode sessions post at the channel root rather than as
+      // thread replies — passing `undefined` makes the platform client
+      // omit `root_id` / `thread_ts`. Mirrors the same gate in
+      // `post-helpers/index.ts`; without it streamed content lands with
+      // `root_id = channelId`, which Mattermost stores in an orphan
+      // thread that never renders in the channel feed.
       createPost: async (content, options) => {
-        const post = await this.platform.createPost(content, this.threadId);
+        const replyTo = this.session.mode === 'channel' ? undefined : this.threadId;
+        const post = await this.platform.createPost(content, replyTo);
         this.registerPost(post.id, options);
         this.updateLastMessage(post);
         return post;
       },
       createInteractivePost: async (content, reactions, options) => {
-        const post = await this.platform.createInteractivePost(content, reactions, this.threadId);
+        const replyTo = this.session.mode === 'channel' ? undefined : this.threadId;
+        const post = await this.platform.createInteractivePost(content, reactions, replyTo);
         this.registerPost(post.id, options);
         this.updateLastMessage(post);
         return post;

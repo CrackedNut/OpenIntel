@@ -305,6 +305,48 @@ describe('MessageManager', () => {
     });
   });
 
+  describe('Channel-mode post routing', () => {
+    // Regression for the bug where streamed Claude content was posted with
+    // `root_id = channelId`, which Mattermost stores in an orphan thread that
+    // never renders in the channel feed (looks "instantly deleted" to users).
+    // Fix lives in `getExecutorContext()` — the createPost/createInteractivePost
+    // bindings must mirror the channel gate in `post-helpers/index.ts`.
+
+    it('thread-mode session posts content as a thread reply', async () => {
+      const event = {
+        type: 'assistant' as const,
+        message: { content: [{ type: 'text', text: 'thread reply' }] },
+      };
+      await manager.handleEvent(event);
+      await manager.flush();
+
+      // Default mock session has no `mode`, so it's thread-mode.
+      const calls = (platform.createPost as ReturnType<typeof mock>).mock.calls;
+      expect(calls.length).toBe(1);
+      expect(calls[0][1]).toBe('thread-123');
+    });
+
+    it('channel-mode session posts content at channel root (no root_id)', async () => {
+      // Mutate the existing session into channel-mode — MessageManager keeps
+      // a reference, so this flips the gate inside its createPost binding.
+      (session as Session & { mode?: 'channel'; channelId?: string }).mode = 'channel';
+      (session as Session & { mode?: 'channel'; channelId?: string }).channelId = 'thread-123';
+
+      const event = {
+        type: 'assistant' as const,
+        message: { content: [{ type: 'text', text: 'channel root post' }] },
+      };
+      await manager.handleEvent(event);
+      await manager.flush();
+
+      const calls = (platform.createPost as ReturnType<typeof mock>).mock.calls;
+      expect(calls.length).toBe(1);
+      // The bug: passing `'thread-123'` here makes Mattermost orphan the post.
+      // The fix: channel-mode must pass `undefined`.
+      expect(calls[0][1]).toBeUndefined();
+    });
+  });
+
   describe('State Hydration', () => {
     it('hydrates task list state', () => {
       manager.hydrateTaskListState({
