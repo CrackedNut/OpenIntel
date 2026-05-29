@@ -18,7 +18,7 @@ import type { SessionStore } from '../../persistence/session-store.js';
 import type { GitHubEmailsStore } from '../../persistence/github-emails-store.js';
 import type { SessionInfo } from '../../ui/types.js';
 import type { BuiltMessageContent } from '../streaming/handler.js';
-import type { ClaudeAccount, PermissionMode, PlatformOverhead } from '../../config/index.js';
+import type { AgentPersonaConfig, ClaudeAccount, PermissionMode, PlatformOverhead } from '../../config/index.js';
 import type { AccountPoolStatus } from '../../claude/account-pool.js';
 
 // =============================================================================
@@ -47,6 +47,14 @@ export interface SessionConfig {
   permissionTimeoutMs?: number;
   /** Streaming flush cadence in ms (default: 500). Lower = snappier updates. */
   flushDelayMs?: number;
+  /**
+   * Optional Hermes-style persona prepended to every session's
+   * `--append-system-prompt`. See `AgentPersonaConfig` in `src/config/types.ts`
+   * for fields. Resolved at file-read time inside `buildAgentPersonaText`
+   * (which caches by mtime), so manual edits to SOUL.md / DIRECTIVES.md
+   * surface on the next session spawn without a bot restart.
+   */
+  agentPersona?: AgentPersonaConfig;
 }
 
 // =============================================================================

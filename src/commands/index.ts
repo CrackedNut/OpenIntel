@@ -59,3 +59,9 @@ export {
   buildAppendSystemPrompt,
   type ResolvedCollaborator,
 } from './system-prompt-generator.js';
+
+// Agent persona (Hermes-style Tier 1 stable content) exports
+export {
+  buildAgentPersonaText,
+  _clearAgentPersonaCache,
+} from './agent-persona-builder.js';

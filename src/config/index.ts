@@ -11,6 +11,7 @@ export type {
   ResolvedLimits,
   StickyMessageCustomization,
   ClaudeAccount,
+  AgentPersonaConfig,
   Config,
   PlatformInstanceConfig,
   MattermostPlatformConfig,

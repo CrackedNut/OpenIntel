@@ -978,6 +978,7 @@ export async function startSession(
     [username],
     CHAT_PLATFORM_PROMPT,
     ctx.state.githubEmailsStore,
+    { agentPersona: ctx.config.agentPersona },
   );
 
   // Create Claude CLI with options
@@ -1250,6 +1251,7 @@ export async function resumeSession(
     state.sessionAllowedUsers || [state.startedBy],
     CHAT_PLATFORM_PROMPT,
     ctx.state.githubEmailsStore,
+    { agentPersona: ctx.config.agentPersona },
   );
 
   // Resume MUST re-use the same Claude account the session started on —

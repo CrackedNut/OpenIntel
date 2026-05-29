@@ -571,7 +571,8 @@ async function startWithoutDaemon() {
     threadLogsEnabled,
     threadLogsRetentionDays,
     config.limits,  // Resource limits (optional, has sensible defaults)
-    config.claudeAccounts  // Claude account pool (undefined = single-account mode)
+    config.claudeAccounts,  // Claude account pool (undefined = single-account mode)
+    config.agentPersona  // Hermes-style persona/directives/projects-index prepend
   );
 
   // Set sticky message customization from config

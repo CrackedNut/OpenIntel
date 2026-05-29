@@ -14,6 +14,8 @@ import {
 } from './registry.js';
 import type { PlatformClient } from '../platform/client.js';
 import type { GitHubEmailsStore } from '../persistence/github-emails-store.js';
+import type { AgentPersonaConfig } from '../config/types.js';
+import { buildAgentPersonaText } from './agent-persona-builder.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('system-prompt');
@@ -177,11 +179,15 @@ export function formatCollaboratorListForChat(collaborators: ResolvedCollaborato
  * Compose the full `appendSystemPrompt` for a Claude session.
  *
  * Layers (in order, blank-line-separated):
- *   1. session context line — included unless `omitSessionContext` is set,
+ *   1. agent persona — Hermes-style "Tier 1 stable" content (DIRECTIVES.md,
+ *      SOUL.md, projects index). Empty string when not configured. Placed
+ *      first so it benefits from the same prefix-cache the rest of the
+ *      stable layers do, and so identity precedes operational context.
+ *   2. session context line — included unless `omitSessionContext` is set,
  *      which is the worktree-respawn case where Claude already has a title
  *      and the bestaande spawn-pad omits it to keep prompt-rebuilds cheap.
- *   2. static chat-platform prompt (commands, send_file, etc.)
- *   3. collaborator co-author section — always included so the rule can't
+ *   3. static chat-platform prompt (commands, send_file, etc.)
+ *   4. collaborator co-author section — always included so the rule can't
  *      silently disappear across `!cd` / worktree / resume.
  *
  * Centralizing every spawn-site through this helper guarantees they all
@@ -201,7 +207,7 @@ export async function buildAppendSystemPrompt(
   allowedUsers: Iterable<string>,
   staticChatPlatformPrompt: string,
   githubEmailsStore: Pick<GitHubEmailsStore, 'get'>,
-  options?: { omitSessionContext?: boolean },
+  options?: { omitSessionContext?: boolean; agentPersona?: AgentPersonaConfig },
 ): Promise<string> {
   const collaborators = await resolveCollaborators(
     platform,
@@ -213,6 +219,10 @@ export async function buildAppendSystemPrompt(
   const collaboratorSection = buildCollaboratorContext(collaborators);
 
   const parts: string[] = [];
+  const personaText = buildAgentPersonaText(options?.agentPersona);
+  if (personaText) {
+    parts.push(personaText);
+  }
   if (!options?.omitSessionContext) {
     parts.push(buildSessionContext(platform, workingDir, threadId));
   }

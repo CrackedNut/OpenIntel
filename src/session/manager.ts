@@ -17,7 +17,7 @@ import { ClaudeEvent } from '../claude/cli.js';
 import type { PlatformClient, PlatformUser, PlatformPost, PlatformFile } from '../platform/index.js';
 import { SessionStore, PersistedSession, PersistedContextPrompt } from '../persistence/session-store.js';
 import { GitHubEmailsStore } from '../persistence/github-emails-store.js';
-import { WorktreeMode, type LimitsConfig, type ResolvedLimits, type ClaudeAccount, type PermissionMode, type OverheadVisibility, type PlatformOverhead, DEFAULT_OVERHEAD_VISIBILITY, resolveLimits, effectivePermissionMode } from '../config/index.js';
+import { WorktreeMode, type AgentPersonaConfig, type LimitsConfig, type ResolvedLimits, type ClaudeAccount, type PermissionMode, type OverheadVisibility, type PlatformOverhead, DEFAULT_OVERHEAD_VISIBILITY, resolveLimits, effectivePermissionMode } from '../config/index.js';
 import { AccountPool } from '../claude/account-pool.js';
 import type { SessionInfo } from '../ui/types.js';
 import { CleanupScheduler } from '../cleanup/index.js';
@@ -110,6 +110,13 @@ export class SessionManager extends EventEmitter {
   // Claude account pool (single-account mode when empty)
   private readonly accountPool: AccountPool;
 
+  // Optional Hermes-style persona prepended to every session's system prompt.
+  // Resolved from config.yaml `agentPersona:` at SessionManager construction
+  // time; the actual file reads happen inside `buildAgentPersonaText`, which
+  // caches by mtime, so manual SOUL/DIRECTIVES edits surface on the next
+  // session spawn without a bot restart.
+  private readonly agentPersona?: AgentPersonaConfig;
+
   constructor(
     workingDir: string,
     /**
@@ -126,7 +133,8 @@ export class SessionManager extends EventEmitter {
     threadLogsEnabled = true,
     threadLogsRetentionDays = 30,
     limits?: LimitsConfig,
-    claudeAccounts?: ClaudeAccount[]
+    claudeAccounts?: ClaudeAccount[],
+    agentPersona?: AgentPersonaConfig,
   ) {
     super();
     this.workingDir = workingDir;
@@ -143,6 +151,7 @@ export class SessionManager extends EventEmitter {
     this.githubEmailsStore = new GitHubEmailsStore();
     this.registry = new SessionRegistry(this.sessionStore);
     this.accountPool = new AccountPool(claudeAccounts);
+    this.agentPersona = agentPersona;
 
     // Create background tasks (started in initialize())
     this.sessionMonitor = new SessionMonitor({
@@ -281,6 +290,7 @@ export class SessionManager extends EventEmitter {
       threadLogsRetentionDays: this.threadLogsRetentionDays,
       permissionTimeoutMs: this.limits.permissionTimeoutSeconds * 1000,
       flushDelayMs: this.limits.flushDelayMs,
+      agentPersona: this.agentPersona,
     };
 
     const state: SessionState = {
@@ -1274,6 +1284,7 @@ export class SessionManager extends EventEmitter {
       getThreadMessagesForContext: (s, limit, excludePostId) => contextPrompt.getThreadMessagesForContext(s, limit, excludePostId),
       formatContextForClaude: (messages, summary) => contextPrompt.formatContextForClaude(messages, summary),
       appendSystemPrompt: CHAT_PLATFORM_PROMPT,
+      agentPersona: this.agentPersona,
       githubEmailsStore: this.githubEmailsStore,
       registerPost: (postId, tid) => this.registerPost(postId, tid),
       updateStickyMessage: () => this.updateStickyMessage(),
