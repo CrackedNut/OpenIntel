@@ -807,8 +807,14 @@ export async function startSession(
 ): Promise<void> {
   const threadId = replyToPostId || '';
 
-  // Check if session already exists for this thread
-  const existingSessionId = ctx.ops.getSessionId(platformId, threadId);
+  // Channel-mode identity: when the platform is configured with
+  // `mode: 'channel'`, the session is keyed by (channelId, userId) instead
+  // of the thread root. The message handler stashes channelId + userId in
+  // `initialOptions.channelMode`; here we use them to compute the right
+  // composite session ID so two users in the same channel get parallel
+  // sessions rather than colliding on the same key.
+  const channelMode = initialOptions?.channelMode;
+  const existingSessionId = ctx.ops.getSessionId(platformId, threadId, channelMode?.userId);
   const existingSession = mutableSessions(ctx).get(existingSessionId);
   if (existingSession && existingSession.claude.isRunning()) {
     // Send as follow-up instead
@@ -885,7 +891,7 @@ export async function startSession(
     }
   }
   const actualThreadId = replyToPostId || (startPost ? startPost.id : '');
-  const sessionId = ctx.ops.getSessionId(platformId, actualThreadId);
+  const sessionId = ctx.ops.getSessionId(platformId, actualThreadId, channelMode?.userId);
 
   // Start typing indicator early so user sees activity during session setup
   // We'll set up a proper interval-based typing indicator once the session is created
@@ -1023,6 +1029,12 @@ export async function startSession(
     platform,
     claudeSessionId,
     claudeAccountId: claudeAccount?.id,
+    // Channel-mode identity: when present, the bot replies at the channel
+    // root and the session is keyed by (channelId, userId). Thread-mode
+    // sessions leave these undefined to preserve back-compat shape.
+    mode: channelMode ? 'channel' : undefined,
+    userId: channelMode?.userId,
+    channelId: channelMode?.channelId,
     startedBy: username,
     startedByDisplayName: displayName,
     startedAt: new Date(),

@@ -304,7 +304,7 @@ export class SessionManager extends EventEmitter {
 
     const ops: SessionOperations = {
       // Session lookup
-      getSessionId: (pid, tid) => this.getSessionId(pid, tid),
+      getSessionId: (pid, tid, uid) => this.getSessionId(pid, tid, uid),
       findSessionByThreadId: (tid) => this.findSessionByThreadId(tid),
 
       // Post management
@@ -1007,6 +1007,15 @@ export class SessionManager extends EventEmitter {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Public lookup for channel-mode sessions, keyed by `(channelId, userId)`.
+   * Used by `message-handler.ts` when the platform's mode is `'channel'` to
+   * route an inbound message to the right user's session.
+   */
+  findChannelSession(platformId: string, channelId: string, userId: string): Session | undefined {
+    return this.registry.findByChannelUser(platformId, channelId, userId);
   }
 
 

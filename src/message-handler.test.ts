@@ -48,6 +48,8 @@ function createMockSessionManager() {
     // Note: isInSessionThread and hasPausedSession removed - code uses registry directly
     isUserAllowedInSession: mock(() => true),
     getActiveThreadIds: mockGetActiveThreadIds,
+    getPlatformMode: mock(() => 'thread' as const),
+    findChannelSession: mock(() => undefined),
     registry: {
       getActiveThreadIds: mockGetActiveThreadIds,
       findByThreadId: mockFindByThreadId,
@@ -1688,6 +1690,91 @@ describe('handleMessage', () => {
 
       expect(session.handleWorktreeBranchResponse).not.toHaveBeenCalled();
       expect(session.requestMessageApproval).toHaveBeenCalled();
+    });
+  });
+
+  describe('channel mode', () => {
+    beforeEach(() => {
+      // Swap the SessionManager mock into channel mode for this block.
+      (session.getPlatformMode as any).mockImplementation(() => 'channel');
+    });
+
+    test('routes inbound messages to findChannelSession (not findByThreadId)', async () => {
+      const matchingSession = { sessionId: 'mm:c-1:u-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => matchingSession);
+
+      const post: PlatformPost = {
+        id: 'p-99',
+        rootId: '',
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: 'follow up message',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'alice', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.findChannelSession).toHaveBeenCalledWith('test-platform', 'c-1', 'u-1');
+      // Thread-mode lookup must NOT be used in channel mode.
+      expect(session.registry.findByThreadId).not.toHaveBeenCalled();
+    });
+
+    test('passes channelMode in initialOptions when starting a new session via @mention', async () => {
+      // No matching session → fresh start.
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => 'hello');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-100',
+        rootId: '',
+        channelId: 'c-7',
+        userId: 'u-9',
+        message: '@bot hello',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      // startSession(options, username, threadRoot, platformId, displayName, triggeringPostId, initialOptions)
+      const initialOptions = startArgs[6];
+      expect(initialOptions.channelMode).toEqual({ channelId: 'c-7', userId: 'u-9' });
+    });
+
+    test('direct error posts go to channel root (no thread reply) in channel mode', async () => {
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+
+      const post: PlatformPost = {
+        id: 'p-101',
+        rootId: '',
+        channelId: 'c-7',
+        userId: 'u-9',
+        message: '@bot',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
+
+      await handleMessage(client, session, post, user, options);
+
+      // The "Mention me with your request" error post should target the
+      // channel root (second arg undefined), not a thread.
+      const createPostCalls = (client.createPost as any).mock.calls;
+      const errorCall = createPostCalls.find(([msg]: [string]) => msg.includes('Mention me'));
+      expect(errorCall).toBeDefined();
+      expect(errorCall[1]).toBeUndefined();
     });
   });
 });

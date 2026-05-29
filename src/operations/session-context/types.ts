@@ -93,8 +93,13 @@ export interface SessionOperations {
   // Session Lookup
   // ---------------------------------------------------------------------------
 
-  /** Get composite session ID from platform and thread IDs */
-  getSessionId(platformId: string, threadId: string): string;
+  /**
+   * Compute the composite session ID. Thread mode → `platformId:threadId`.
+   * Channel mode → `platformId:threadId:userId` (where `threadId` carries
+   * the channelId in channel mode). Pass `userId` when the platform is
+   * configured with `mode: 'channel'`; omit for thread mode.
+   */
+  getSessionId(platformId: string, threadId: string, userId?: string): string;
 
   /** Find session by thread ID (searches across all platforms) */
   findSessionByThreadId(threadId: string): Session | undefined;

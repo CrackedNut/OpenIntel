@@ -56,8 +56,23 @@ export async function handleMessage(
   const { platformId, logger, onKill } = options;
   const username = user?.username || 'unknown';
   const message = post.message;
-  const threadRoot = post.rootId || post.id;
   const formatter = client.getFormatter();
+
+  // Channel-mode detection. In `'channel'` mode the bot replies as root posts
+  // in the channel (no thread reply) and each user gets their own session
+  // keyed by `(channelId, userId)`. In `'thread'` mode (default, historical
+  // behavior) the bot routes by the thread root and replies inside the
+  // thread. The session lookup, the post-helper reply target, and the
+  // `initialOptions.channelMode` plumbing all branch on this flag.
+  const platformMode = session.getPlatformMode(platformId);
+  const isChannelMode = platformMode === 'channel';
+  // `threadRoot` is the historical routing key used for thread-mode posts
+  // and lookups. In channel mode it carries the channelId so direct
+  // `createPost(msg, threadRoot)` calls still target the right channel —
+  // but for those calls we pass `undefined` instead so the message lands at
+  // the channel root rather than as a stray thread reply.
+  const threadRoot = isChannelMode ? post.channelId : (post.rootId || post.id);
+  const directReplyTo = isChannelMode ? undefined : threadRoot;
 
   try {
     // Check for !kill command (emergency shutdown)
@@ -67,7 +82,7 @@ export async function handleMessage(
       (client.isBotMentioned(message) && client.extractPrompt(message).toLowerCase() === '!kill')
     ) {
       if (!client.isUserAllowed(username)) {
-        await client.createPost(`⛔ Only authorized users can use ${formatter.formatCode('!kill')}`, threadRoot);
+        await client.createPost(`⛔ Only authorized users can use ${formatter.formatCode('!kill')}`, directReplyTo);
         return;
       }
       // Post confirmation to the channel where !kill was issued
@@ -98,9 +113,15 @@ export async function handleMessage(
       return;
     }
 
-    // Follow-up in active thread
-    // Use registry to check for active session directly
-    const activeSession = session.registry.findByThreadId(threadRoot);
+    // Follow-up in active session.
+    //
+    // Thread mode: lookup by threadRoot (post's thread root) — the historical
+    // path. Channel mode: lookup by `(channelId, userId)` so two users in the
+    // same channel can hold parallel sessions; the post's `rootId` is
+    // meaningless because channel-mode bot replies live at the channel root.
+    const activeSession = isChannelMode && user
+      ? session.findChannelSession(platformId, post.channelId, user.id)
+      : session.registry.findByThreadId(threadRoot);
     if (activeSession) {
       // If message starts with @mention to someone else, track it as side conversation (if from approved user)
       const mentionMatch = message.trim().match(/^@([\w.-]+)/);
@@ -255,7 +276,7 @@ export async function handleMessage(
     if (!client.isBotMentioned(message)) return;
 
     if (!client.isUserAllowed(username)) {
-      await client.createPost(`⚠️ ${formatter.formatUserMention(username)} is not authorized`, threadRoot);
+      await client.createPost(`⚠️ ${formatter.formatUserMention(username)} is not authorized`, directReplyTo);
       return;
     }
 
@@ -263,7 +284,7 @@ export async function handleMessage(
     const files = post.metadata?.files;
 
     if (!prompt && !files?.length) {
-      await client.createPost(`Mention me with your request`, threadRoot);
+      await client.createPost(`Mention me with your request`, directReplyTo);
       return;
     }
 
@@ -272,6 +293,11 @@ export async function handleMessage(
     // Uses unified command executor with stacking support
     // ---------------------------------------------------------------------------
     const initialOptions: InitialSessionOptions = {};
+    // Channel-mode: bind the new session to this user so the channel can host
+    // multiple parallel sessions, one per user.
+    if (isChannelMode && user) {
+      initialOptions.channelMode = { channelId: post.channelId, userId: user.id };
+    }
     let worktreeBranch: string | undefined;
 
     // Build executor context for first-message commands
@@ -345,7 +371,7 @@ export async function handleMessage(
     if (!prompt.trim() && !files?.length && !worktreeBranch) {
       // Options were set but no actual prompt - could optionally start session anyway
       // For now, require a prompt or files (unless worktree specified)
-      await client.createPost(`Mention me with your request`, threadRoot);
+      await client.createPost(`Mention me with your request`, directReplyTo);
       return;
     }
 
@@ -378,7 +404,7 @@ export async function handleMessage(
     logger?.error(`Error handling message: ${errorMessage}`);
     // Try to notify user if possible
     try {
-      await client.createPost(`⚠️ An error occurred: ${errorMessage}`, threadRoot);
+      await client.createPost(`⚠️ An error occurred: ${errorMessage}`, directReplyTo);
     } catch (postErr) {
       logSilentError('error-notification-post', postErr);
     }

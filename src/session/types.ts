@@ -44,6 +44,16 @@ export interface InitialSessionOptions {
   forceInteractivePermissions?: boolean;
   /** Switch to existing worktree instead of creating new (from !worktree switch) */
   switchToExisting?: boolean;
+  /**
+   * Channel-mode session identity. Set by the message handler when the
+   * triggering platform is configured with `mode: 'channel'`. When present,
+   * the new session is bound to `(channelId, userId)` and replies at the
+   * channel root instead of in a thread.
+   */
+  channelMode?: {
+    channelId: string;
+    userId: string;
+  };
 }
 
 // =============================================================================

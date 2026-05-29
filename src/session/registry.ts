@@ -86,6 +86,28 @@ export class SessionRegistry {
   }
 
   /**
+   * Find a channel-mode session for (platformId, channelId, userId).
+   *
+   * Channel-mode sessions key on platform+channel+user, so a single channel
+   * can host many concurrent sessions — one per user. Thread-mode sessions
+   * never match this lookup even if the channelId/userId happen to align,
+   * which keeps the two modes hermetic.
+   */
+  findByChannelUser(platformId: string, channelId: string, userId: string): Session | undefined {
+    for (const session of this.sessions.values()) {
+      if (
+        session.mode === 'channel' &&
+        session.platformId === platformId &&
+        session.channelId === channelId &&
+        session.userId === userId
+      ) {
+        return session;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Get session by composite session ID.
    */
   get(sessionId: string): Session | undefined {

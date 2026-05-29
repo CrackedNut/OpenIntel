@@ -646,4 +646,61 @@ describe('SessionRegistry', () => {
       expect(postIndex.get('post-1')).toBe('thread-1');
     });
   });
+
+  describe('findByChannelUser (channel mode)', () => {
+    it('matches a channel-mode session by (platformId, channelId, userId)', () => {
+      const sessionA = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1:user-A',
+        mode: 'channel',
+        channelId: 'channel-1',
+        userId: 'user-A',
+      });
+      const sessionB = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1:user-B',
+        mode: 'channel',
+        channelId: 'channel-1',
+        userId: 'user-B',
+      });
+      registry.register(sessionA);
+      registry.register(sessionB);
+
+      expect(registry.findByChannelUser('mm', 'channel-1', 'user-A')?.sessionId).toBe('mm:channel-1:user-A');
+      expect(registry.findByChannelUser('mm', 'channel-1', 'user-B')?.sessionId).toBe('mm:channel-1:user-B');
+    });
+
+    it('returns undefined when no channel-mode session matches', () => {
+      const session = createMockSession({
+        platformId: 'mm',
+        mode: 'channel',
+        channelId: 'channel-1',
+        userId: 'user-A',
+      });
+      registry.register(session);
+
+      expect(registry.findByChannelUser('mm', 'channel-1', 'user-Z')).toBeUndefined();
+      expect(registry.findByChannelUser('mm', 'channel-2', 'user-A')).toBeUndefined();
+      expect(registry.findByChannelUser('slack', 'channel-1', 'user-A')).toBeUndefined();
+    });
+
+    it('does not match thread-mode sessions even when the IDs align', () => {
+      // A thread-mode session whose threadId happens to equal a channelId
+      // must not be reachable via findByChannelUser — channel-mode lookups
+      // are mode-scoped to prevent cross-mode collisions.
+      const threadSession = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1',
+        userId: 'user-A',
+        channelId: 'channel-1',
+        // mode is undefined → thread mode by default
+      });
+      registry.register(threadSession);
+
+      expect(registry.findByChannelUser('mm', 'channel-1', 'user-A')).toBeUndefined();
+    });
+  });
 });
