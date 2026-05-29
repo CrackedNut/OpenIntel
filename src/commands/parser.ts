@@ -81,6 +81,10 @@ const COMMAND_PATTERNS: Array<[string, RegExp]> = [
   // Emergency
   ['kill', /^!kill\s*$/i],
 
+  // Archive search — current thread by default; `!search platform <q>` or
+  // `!search all <q>` broadens scope. Captures everything after `!search`.
+  ['search', /^!search\s+(.+)$/i],
+
   // Bug reporting
   ['bug', /^!bug(?:\s+(.+))?$/i],
 

@@ -115,6 +115,7 @@ describe('MattermostClient pure helpers', () => {
     const c = makeClient({ url: 'https://x', token: 't', channelId: 'cc', allowedUsers: ['u'] });
     expect(c.getMcpConfig()).toEqual({
       type: 'mattermost',
+      id: 'mm-main',
       url: 'https://x',
       token: 't',
       channelId: 'cc',

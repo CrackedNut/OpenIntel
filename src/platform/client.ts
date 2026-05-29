@@ -115,6 +115,8 @@ export interface PlatformClient extends EventEmitter {
    */
   getMcpConfig(): {
     type: string;
+    /** Stable per-platform-instance ID (matches PlatformInstanceConfig.id). */
+    id?: string;
     url: string;
     token: string;
     channelId: string;

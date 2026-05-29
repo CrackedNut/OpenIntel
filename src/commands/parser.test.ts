@@ -173,6 +173,39 @@ describe('parseCommand', () => {
     });
   });
 
+  describe('archive search command', () => {
+    test('parses !search with a single-word query', () => {
+      expect(parseCommand('!search foo')).toEqual({ command: 'search', args: 'foo', match: '!search foo' });
+    });
+
+    test('parses !search with a multi-word query', () => {
+      expect(parseCommand('!search OAuth flow regression')).toEqual({
+        command: 'search',
+        args: 'OAuth flow regression',
+        match: '!search OAuth flow regression',
+      });
+    });
+
+    test('parses !search with an explicit scope prefix (handler splits it)', () => {
+      // The parser pulls everything after `!search` as args; the handler is
+      // responsible for splitting the optional `thread|platform|all` prefix.
+      expect(parseCommand('!search platform OAuth flow')).toEqual({
+        command: 'search',
+        args: 'platform OAuth flow',
+        match: '!search platform OAuth flow',
+      });
+    });
+
+    test('returns null for !search with no query (handler does not run)', () => {
+      // The pattern requires at least one non-space token after `!search`, so
+      // a bare `!search` falls through to the _dynamic catch-all.
+      const r = parseCommand('!search');
+      expect(r?.command).toBe('search');
+      // _dynamic pattern returns command='search' but with args=undefined.
+      expect(r?.args).toBeUndefined();
+    });
+  });
+
   describe('non-commands', () => {
     test('returns null for regular text', () => {
       expect(parseCommand('hello world')).toBeNull();

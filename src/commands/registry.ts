@@ -249,6 +249,13 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
     audience: 'user',
   },
   {
+    command: 'search',
+    description: "Search this bot's archived conversations (current thread by default)",
+    args: '<query>',
+    category: 'system',
+    audience: 'user',
+  },
+  {
     command: 'bug',
     description: 'Report a bug (creates GitHub issue)',
     args: '<description>',

@@ -716,6 +716,7 @@ export class MattermostClient extends BasePlatformClient {
   getMcpConfig() {
     return {
       type: 'mattermost',
+      id: this.platformId,
       url: this.url,
       token: this.token,
       channelId: this.channelId,

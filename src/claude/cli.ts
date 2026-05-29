@@ -87,6 +87,13 @@ export interface PlatformMcpConfig {
   token: string;
   channelId: string;
   allowedUsers: string[];
+  /**
+   * Stable per-platform identifier (from `PlatformInstanceConfig.id`).
+   * Surfaced to the MCP child so `search_archive` can scope by the same
+   * `~/.claude-threads/logs/{platformId}/` partition the thread logger
+   * writes to. Optional for back-compat with older callers.
+   */
+  id?: string;
   /** App-level token for Slack Socket Mode (only needed for Slack) */
   appToken?: string;
   /**
@@ -291,6 +298,7 @@ export function buildPermissionArgs(opts: {
 
   const mcpEnv: Record<string, string> = {
     PLATFORM_TYPE: opts.platformConfig.type,
+    PLATFORM_ID: opts.platformConfig.id || '',
     PLATFORM_URL: opts.platformConfig.url,
     PLATFORM_TOKEN: opts.platformConfig.token,
     PLATFORM_CHANNEL_ID: opts.platformConfig.channelId,

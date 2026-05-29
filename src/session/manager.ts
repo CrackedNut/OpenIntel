@@ -1090,6 +1090,21 @@ export class SessionManager extends EventEmitter {
     await commands.kickUser(session, kickedUser, kickedBy, this.getContext());
   }
 
+  /**
+   * Run `!search <query>` against the thread-logger JSONL archive. Default
+   * scope is the current thread; `platform` and `all` opt in to broader scope.
+   */
+  async searchArchiveCommand(
+    threadId: string,
+    username: string,
+    query: string,
+    scope: 'thread' | 'platform' | 'all' = 'thread',
+  ): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await commands.searchArchiveCommand(session, username, query, scope);
+  }
+
   async setGitHubEmail(
     threadId: string,
     username: string,

@@ -426,6 +426,49 @@ const handlePlugin: CommandHandler = async (ctx, args) => {
 };
 
 /**
+ * Handle `!search <query>` — substring-greps the bot's JSONL thread archives.
+ *
+ * Default scope is the current thread. Two opt-in scopes broaden the search:
+ *   - `!search platform <query>` — every session this bot ran on the same
+ *     platform instance (still bounded to one channel's bot deployment).
+ *   - `!search all <query>` — every platform this bot has logged. Operator
+ *     scope; only useful in the bot-admin channel.
+ *
+ * No first-message support: in that context the bot has no session yet, so
+ * "current thread" is ambiguous.
+ */
+const handleSearch: CommandHandler = async (ctx, args) => {
+  if (ctx.commandContext === 'first-message') return { handled: false };
+  if (!ctx.isAllowed) return { handled: true };
+  if (!args) {
+    await ctx.client.createPost(
+      `❌ Usage: ${ctx.formatter.formatCode('!search <query>')} (or ${ctx.formatter.formatCode('!search platform <query>')} / ${ctx.formatter.formatCode('!search all <query>')}).`,
+      ctx.threadId,
+    );
+    return { handled: true };
+  }
+  const trimmed = args.trim();
+  let scope: 'thread' | 'platform' | 'all' = 'thread';
+  let query = trimmed;
+  const scopeMatch = trimmed.match(/^(thread|platform|all)\s+(.+)$/i);
+  if (scopeMatch) {
+    scope = scopeMatch[1].toLowerCase() as 'thread' | 'platform' | 'all';
+    query = scopeMatch[2].trim();
+  }
+  if (!query) {
+    await ctx.client.createPost(`❌ Empty search query.`, ctx.threadId);
+    return { handled: true };
+  }
+  await ctx.sessionManager.searchArchiveCommand(
+    ctx.threadId,
+    ctx.username,
+    query,
+    scope,
+  );
+  return { handled: true };
+};
+
+/**
  * Create a passthrough handler for Claude Code slash commands.
  */
 function createPassthroughHandler(slashCommand: string): CommandHandler {
@@ -461,6 +504,7 @@ handlers.set('permissions', handlePermissions);
 handlers.set('worktree', handleWorktree);
 handlers.set('bug', handleBug);
 handlers.set('plugin', handlePlugin);
+handlers.set('search', handleSearch);
 
 // Passthrough commands
 handlers.set('context', createPassthroughHandler('context'));

@@ -48,6 +48,7 @@ import {
   formatResolvedSlack,
 } from '../platform/slack/permalink.js';
 import { clampThreadLimit, truncateBody, quoteBlock } from '../platform/permalink-shared.js';
+import { searchArchive, formatArchiveHits, type ArchiveScope } from '../persistence/archive-search.js';
 
 // =============================================================================
 // Configuration
@@ -85,6 +86,7 @@ const OUTBOUND_FILES_MAX_BYTES = parseInt(
 );
 
 const SEND_FILE_TOOL_NAME = 'mcp__claude-threads-mcp__send_file';
+const SEARCH_ARCHIVE_TOOL_NAME = 'mcp__claude-threads-mcp__search_archive';
 const READ_POST_TOOL_NAME = 'mcp__claude-threads-mcp__read_post';
 const REACT_TO_POST_TOOL_NAME = 'mcp__claude-threads-mcp__react_to_post';
 const UPDATE_OWN_POST_TOOL_NAME = 'mcp__claude-threads-mcp__update_own_post';
@@ -110,6 +112,7 @@ const SKIP_STANDARD_PERMISSION_PROMPT = new Set<string>([
   LIST_THREAD_TOOL_NAME,
   READ_CHANNEL_HISTORY_TOOL_NAME,
   SEARCH_MESSAGES_TOOL_NAME,
+  SEARCH_ARCHIVE_TOOL_NAME,
   SEND_DM_TOOL_NAME,
 ]);
 
@@ -1141,6 +1144,50 @@ async function handleSearchMessages(
 }
 
 // =============================================================================
+// search_archive — substring grep over the bot's thread-logger JSONL files
+// =============================================================================
+
+export interface SearchArchiveResult {
+  ok: boolean;
+  content?: string;
+  reason?: string;
+}
+
+/**
+ * Run the archive search against `~/.claude-threads/logs/` using the platform
+ * + thread IDs the MCP child was spawned with. Default scope is `thread`, so
+ * by default Claude can only see this thread's own history — `platform` and
+ * `all` are explicit broader scopes the caller asks for.
+ */
+function handleSearchArchive(args: {
+  query: string;
+  scope?: ArchiveScope;
+  max_results?: number;
+}): SearchArchiveResult {
+  if (typeof args.query !== 'string' || args.query.trim().length === 0) {
+    return { ok: false, reason: 'query must be a non-empty string' };
+  }
+  const scope: ArchiveScope = args.scope ?? 'thread';
+  if (scope === 'thread' && !PLATFORM_THREAD_ID) {
+    return { ok: false, reason: 'thread scope requires PLATFORM_THREAD_ID — none was set' };
+  }
+  try {
+    const hits = searchArchive({
+      query: args.query,
+      scope,
+      platformId: process.env.PLATFORM_ID || undefined,
+      threadId: PLATFORM_THREAD_ID || undefined,
+      limit: args.max_results,
+    });
+    return { ok: true, content: formatArchiveHits(args.query, hits) };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    mcpLogger.warn(`search_archive failed: ${reason}`);
+    return { ok: false, reason };
+  }
+}
+
+// =============================================================================
 // send_dm — direct-message a member of the bot's channel
 // =============================================================================
 //
@@ -1712,6 +1759,43 @@ async function main() {
       return {
         content: [{ type: 'text', text: JSON.stringify(result) }],
       };
+    },
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (server as any).tool(
+    'search_archive',
+    "Search this bot's archived thread logs (user messages + Claude assistant " +
+      'text + tool calls). Default scope is THIS thread; pass `scope: "platform"` ' +
+      'to include every session this bot ran for the same platform instance, ' +
+      'or `scope: "all"` to include every platform. ' +
+      "Returns { ok: true, content } with formatted hits (timestamp, author, " +
+      'snippet) or { ok: true, content } with a "no matches" line. ' +
+      'Use this when the user references "earlier", "last time", or a past ' +
+      "conversation, or when you want to recall an instruction from a prior turn " +
+      'in the same thread without re-asking.',
+    {
+      query: z.string().describe('Substring to search for (case-insensitive).'),
+      scope: z
+        .enum(['thread', 'platform', 'all'])
+        .optional()
+        .describe('Scope; default "thread" (this thread only).'),
+      max_results: z
+        .number()
+        .optional()
+        .describe('Max hits to return (default 10, max 50).'),
+    },
+    async ({
+      query,
+      scope,
+      max_results,
+    }: {
+      query: string;
+      scope?: ArchiveScope;
+      max_results?: number;
+    }) => {
+      const result = handleSearchArchive({ query, scope, max_results });
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },
   );
 

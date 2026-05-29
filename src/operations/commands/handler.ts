@@ -66,6 +66,7 @@ import {
   resolveCollaborators,
 } from '../../commands/system-prompt-generator.js';
 import { isValidGitHubNoreplyEmail } from '../../persistence/github-emails-store.js';
+import { searchArchive, formatArchiveHits, type ArchiveScope } from '../../persistence/archive-search.js';
 
 const log = createLogger('commands');
 const sessionLog = createSessionLog(log);
@@ -1286,4 +1287,37 @@ export async function handleBugReportApproval(
 
   // Clear pending bug report
   session.messageManager?.clearPendingBugReport();
+}
+
+// ---------------------------------------------------------------------------
+// !search — substring search over the thread-logger JSONL archive
+// ---------------------------------------------------------------------------
+
+/**
+ * Grep this bot's archived conversations and post the result back to the
+ * thread. Default scope is the current thread; `platform` and `all` opt in
+ * to broader scopes. Hits are formatted with timestamp + author + a snippet
+ * around the match so the user can decide whether to dig further.
+ */
+export async function searchArchiveCommand(
+  session: Session,
+  username: string,
+  query: string,
+  scope: ArchiveScope,
+): Promise<void> {
+  session.threadLogger?.logCommand('search', `${scope}:${query.slice(0, 80)}`, username);
+  const hits = searchArchive({
+    query,
+    scope,
+    platformId: session.platformId,
+    threadId: session.threadId,
+    limit: 10,
+  });
+  const scopeLabel = scope === 'thread' ? 'this thread' : scope === 'platform' ? 'this platform' : 'all platforms';
+  const header = `🔎 Search of ${scopeLabel} for \`${query}\``;
+  const body = hits.length === 0
+    ? `${header} — no matches.`
+    : `${header}\n\n${formatArchiveHits(query, hits)}`;
+  await post(session, 'info', body);
+  sessionLog(session).info(`🔎 !search ${scope} '${query}' → ${hits.length} hits (by @${username})`);
 }
