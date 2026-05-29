@@ -38,6 +38,9 @@ export {
   reportBug,
   handleBugReportApproval,
 
+  // Archive search (`!search`)
+  searchArchiveCommand,
+
   // Restart helper (used by plugin handler)
   restartClaudeSession,
 } from './handler.js';

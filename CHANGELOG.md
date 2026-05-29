@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`!search` command + `search_archive` MCP tool over the existing thread-logger archive.** The thread logger already writes every user message, Claude assistant turn, and tool call to `~/.claude-threads/logs/{platformId}/{sessionId}.jsonl`; this PR makes that archive searchable. Default scope is the current thread (so a user can `!search OAuth` and only see their own thread's history), `!search platform <query>` widens to every session this bot ran on the same platform instance, `!search all <query>` crosses platforms. Each hit posts as a markdown block with timestamp, author, and a snippet around the match. Claude can also call the new `search_archive` MCP tool mid-session to recall an instruction from a prior turn without re-asking — same scope rules apply, thread-scoped by default. No new dependencies, no schema migration: it's a substring grep over the existing JSONL files, scoped by reading the `lifecycle:start` entry's threadId from each candidate file. Bounded to 50 hits max.
+
 ## [1.16.1] - 2026-05-22
 
 ### Security

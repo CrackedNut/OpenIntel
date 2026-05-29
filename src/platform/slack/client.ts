@@ -765,6 +765,7 @@ export class SlackClient extends BasePlatformClient {
   getMcpConfig() {
     return {
       type: 'slack',
+      id: this.platformId,
       url: 'https://slack.com', // Not really used for Slack
       token: this.botToken,
       channelId: this.channelId,
