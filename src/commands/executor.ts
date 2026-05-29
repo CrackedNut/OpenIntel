@@ -298,6 +298,40 @@ const handlePermissions: CommandHandler = async (ctx, args) => {
 };
 
 /**
+ * Handle !thread command.
+ *
+ * Opts out of channel-mode when an @mention at channel root would otherwise
+ * spawn a shared channel session. The actual mode flip happens in the
+ * message handler — this just sets a flag.
+ *
+ * In-session calls (where !thread is typed after the session already
+ * exists) post a hint instead, since switching a live session's mode is
+ * not yet supported and silently doing so would lose context.
+ */
+const handleThread: CommandHandler = async (ctx) => {
+  if (ctx.commandContext === 'first-message') {
+    // First-message: set the opt-out flag and let stacking continue.
+    // The message handler is responsible for clearing `channelMode` and
+    // re-routing the post.id as the thread root.
+    return {
+      sessionOptions: { forceThreadMode: true },
+      continueProcessing: true,
+    };
+  }
+
+  // In-session: friendly hint, no state change. We avoid switching modes
+  // mid-session because the persisted threadId, sticky message, and
+  // collaborator allowlist are all keyed on it.
+  await ctx.client.createPost(
+    `ℹ️ ${ctx.formatter.formatBold('!thread')} only applies when starting a session at channel root. ` +
+      `This session is already running — use ${ctx.formatter.formatCode('!stop')} and start a new one with ` +
+      `${ctx.formatter.formatCode('@bot !thread <prompt>')} if you want a thread-mode session here.`,
+    ctx.threadId,
+  );
+  return { handled: true };
+};
+
+/**
  * Handle !worktree command (unified handling for subcommands and branch creation).
  */
 const handleWorktree: CommandHandler = async (ctx, args) => {
@@ -543,6 +577,7 @@ handlers.set('kick', handleKick);
 handlers.set('github-email', handleGitHubEmail);
 handlers.set('cd', handleCd);
 handlers.set('permissions', handlePermissions);
+handlers.set('thread', handleThread);
 handlers.set('worktree', handleWorktree);
 handlers.set('bug', handleBug);
 handlers.set('plugin', handlePlugin);

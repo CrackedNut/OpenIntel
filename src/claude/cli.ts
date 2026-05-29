@@ -107,6 +107,14 @@ export interface ClaudeCliOptions {
   workingDir: string;
   threadId?: string;  // Thread ID for permission requests
   /**
+   * Session mode. When 'channel', the spawned MCP child posts permission
+   * prompts at channel root rather than as thread replies — required for
+   * channel-mode sessions where `threadId` is actually the channelId and
+   * Mattermost rejects it as a root_id with a 400 error. Omit (or pass
+   * 'thread') for the default thread-reply UX.
+   */
+  mode?: 'channel' | 'thread';
+  /**
    * How tool-use permissions are enforced.
    *
    * - `'default'`: MCP permission server posts prompts; user reacts to approve.
@@ -258,6 +266,12 @@ export function buildPermissionArgs(opts: {
   mcpServerPath: string;
   platformConfig: PlatformMcpConfig | undefined;
   threadId: string | undefined;
+  /**
+   * Session mode. Forwarded to the MCP child as `PLATFORM_MODE` so its
+   * permission prompts skip `root_id` in channel-mode sessions (where
+   * `threadId` is actually the channelId and Mattermost would reject it).
+   */
+  mode?: 'channel' | 'thread';
   sessionId: string | undefined;
   permissionTimeoutMs: number;
   debug: boolean;
@@ -303,6 +317,7 @@ export function buildPermissionArgs(opts: {
     PLATFORM_TOKEN: opts.platformConfig.token,
     PLATFORM_CHANNEL_ID: opts.platformConfig.channelId,
     PLATFORM_THREAD_ID: opts.threadId || '',
+    PLATFORM_MODE: opts.mode === 'channel' ? 'channel' : '',
     ALLOWED_USERS: opts.platformConfig.allowedUsers.join(','),
     DEBUG: opts.debug ? '1' : '',
     PERMISSION_TIMEOUT_MS: String(opts.permissionTimeoutMs),
@@ -521,6 +536,7 @@ export class ClaudeCli extends EventEmitter {
       mcpServerPath: this.getMcpServerPath(),
       platformConfig: this.options.platformConfig,
       threadId: this.options.threadId,
+      mode: this.options.mode,
       sessionId: this.options.sessionId,
       permissionTimeoutMs: this.options.permissionTimeoutMs ?? 120000,
       debug: this.debug,

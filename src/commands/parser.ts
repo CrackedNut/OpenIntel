@@ -212,6 +212,9 @@ const STACKABLE_PATTERNS: Array<[string, RegExp, number, number]> = [
   // !worktree - capture everything after !worktree as args
   // The executor will parse subcommand vs branch from the args
   ['worktree', /^!worktree\s+(.+)$/i, 1, -1],  // -1 means no remainder group
+  // !thread takes no args; everything after it is the remainder (next
+  // stacked command or the actual prompt). argGroup=-1 → no args.
+  ['thread', /^!thread(?:\s+(.*))?$/i, -1, 1],
 ];
 
 /**

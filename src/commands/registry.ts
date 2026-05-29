@@ -242,6 +242,15 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
     worksInFirstMessage: true,
     isStackable: true,  // !permissions <mode> can be followed by more commands or prompt
   },
+  {
+    command: 'thread',
+    description: 'Start this session in its own thread (default at channel root would be channel-mode)',
+    category: 'settings',
+    audience: 'user',
+    claudeNotes: 'User decisions, not yours',
+    worksInFirstMessage: true,
+    isStackable: true,  // !thread can be followed by !cd / !worktree / !permissions / prompt
+  },
 
   // ---------------------------------------------------------------------------
   // System

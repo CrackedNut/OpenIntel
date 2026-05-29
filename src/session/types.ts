@@ -55,6 +55,15 @@ export interface InitialSessionOptions {
   channelMode?: {
     channelId: string;
   };
+  /**
+   * Opt-out of channel-mode for a specific @mention. Set by `!thread` in
+   * the first message: even though the @mention landed at channel root
+   * (where the message-handler would normally route into a shared
+   * channel-mode session), the user wants this session to live in its
+   * own thread anchored at the triggering post. The handler clears
+   * `channelMode` when this is set.
+   */
+  forceThreadMode?: boolean;
 }
 
 // =============================================================================

@@ -198,6 +198,7 @@ class FakeApi implements McpPlatformApi {
 interface HarnessOptions extends FakeApiOptions {
   platformConfigured?: boolean;
   threadId?: string;
+  mode?: 'channel' | 'thread';
   timeoutMs?: number;
   initialAllowAll?: boolean;
   fakeNow?: () => number;
@@ -208,6 +209,7 @@ function makeCfg(api: FakeApi, opts: HarnessOptions = {}): PermissionHandlerConf
   return {
     api,
     threadId: opts.threadId,
+    mode: opts.mode,
     timeoutMs: opts.timeoutMs ?? 120_000,
     platformConfigured: opts.platformConfigured ?? true,
     getAllowAll: () => allowAll,
@@ -379,6 +381,36 @@ describe('handlePermissionWith', () => {
       reactions: [{ postId: 'post-1', userId: 'u-alice', emojiName: '+1' }],
     });
     const cfg = makeCfg(api, { threadId: 'thread-xyz' });
+    await handlePermissionWith('Bash', { command: 'ls' }, cfg);
+    expect(api.createdPosts[0].threadId).toBe('thread-xyz');
+  });
+
+  // Regression for the channel-mode 400 bug. The bot's `session.threadId`
+  // for a channel-mode session IS the channelId, so the MCP child receives
+  // PLATFORM_THREAD_ID === channelId. Posting with `root_id = channelId`
+  // makes Mattermost return "Invalid RootId parameter" and the permission
+  // prompt fails — which means every Read/Bash/Grep gets denied. The fix
+  // is to omit the rootId when mode === 'channel' so the prompt lands at
+  // channel root instead.
+  it('omits the rootId when mode is "channel" (channel-mode permission prompt)', async () => {
+    const api = new FakeApi({
+      reactions: [{ postId: 'post-1', userId: 'u-alice', emojiName: '+1' }],
+    });
+    const cfg = makeCfg(api, {
+      threadId: 'channel-id-acts-as-thread', // what PLATFORM_THREAD_ID actually is in channel mode
+      mode: 'channel',
+    });
+    await handlePermissionWith('Bash', { command: 'ls' }, cfg);
+    // Must be undefined — anything else (including the channelId) crashes
+    // Mattermost with 400 root_id.app_error.
+    expect(api.createdPosts[0].threadId).toBeUndefined();
+  });
+
+  it('passes threadId when mode is "thread" or unset (default thread-mode behavior preserved)', async () => {
+    const api = new FakeApi({
+      reactions: [{ postId: 'post-1', userId: 'u-alice', emojiName: '+1' }],
+    });
+    const cfg = makeCfg(api, { threadId: 'thread-xyz', mode: 'thread' });
     await handlePermissionWith('Bash', { command: 'ls' }, cfg);
     expect(api.createdPosts[0].threadId).toBe('thread-xyz');
   });

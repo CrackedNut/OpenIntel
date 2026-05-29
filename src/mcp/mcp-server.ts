@@ -22,6 +22,8 @@
  *   - PLATFORM_TOKEN: Bot access token
  *   - PLATFORM_CHANNEL_ID: Channel to post permission requests
  *   - PLATFORM_THREAD_ID: Thread ID for the current session
+ *   - PLATFORM_MODE: 'channel' for channel-mode sessions (skips root_id on
+ *     posts so they land at channel root), unset/anything else = thread mode
  *   - ALLOWED_USERS: Comma-separated list of authorized usernames
  *   - DEBUG: Set to '1' for debug logging
  */
@@ -59,6 +61,12 @@ const PLATFORM_URL = process.env.PLATFORM_URL || '';
 const PLATFORM_TOKEN = process.env.PLATFORM_TOKEN || '';
 const PLATFORM_CHANNEL_ID = process.env.PLATFORM_CHANNEL_ID || '';
 const PLATFORM_THREAD_ID = process.env.PLATFORM_THREAD_ID || '';
+// 'channel' = the bot's session is shared at channel root; the MCP server
+// must NOT pass `root_id`/`thread_ts` on its prompts, otherwise Mattermost
+// returns a 400 ("Invalid RootId parameter") for every tool's permission
+// request. Anything else (incl. unset) preserves the historical thread
+// behavior. Set in src/claude/cli.ts based on `session.mode`.
+const PLATFORM_MODE = process.env.PLATFORM_MODE || '';
 const ALLOWED_USERS = (process.env.ALLOWED_USERS || '')
   .split(',')
   .map(u => u.trim())
@@ -190,11 +198,27 @@ export interface PermissionResult {
 export interface PermissionHandlerConfig {
   api: McpPlatformApi;
   threadId?: string;
+  /**
+   * Session mode. When 'channel' the prompt is posted at channel root —
+   * `threadId` is ignored for posting (it still equals the channelId,
+   * which Mattermost rejects as a root_id). Anything else keeps the
+   * historical thread-reply behavior.
+   */
+  mode?: 'channel' | 'thread';
   timeoutMs: number;
   platformConfigured: boolean;
   getAllowAll: () => boolean;
   setAllowAll: (value: boolean) => void;
   now?: () => number;
+}
+
+/**
+ * Compute the rootId to pass to `createInteractivePost` from the MCP
+ * server: undefined in channel mode (post at channel root), the session
+ * threadId otherwise. Extracted so call sites can't drift.
+ */
+function postRootIdFor(mode: 'channel' | 'thread' | undefined, threadId: string | undefined): string | undefined {
+  return mode === 'channel' ? undefined : threadId;
 }
 
 /**
@@ -260,7 +284,7 @@ export async function handlePermissionWith(
     const post = await api.createInteractivePost(
       message,
       [APPROVAL_EMOJIS[0], ALLOW_ALL_EMOJIS[0], DENIAL_EMOJIS[0]],
-      cfg.threadId
+      postRootIdFor(cfg.mode, cfg.threadId)
     );
 
     // Wait for authorized user's reaction (keep waiting if unauthorized users react)
@@ -324,6 +348,7 @@ async function handlePermission(
   return handlePermissionWith(toolName, toolInput, {
     api: getApi(),
     threadId: PLATFORM_THREAD_ID || undefined,
+    mode: PLATFORM_MODE === 'channel' ? 'channel' : 'thread',
     timeoutMs: PERMISSION_TIMEOUT_MS,
     platformConfigured: Boolean(PLATFORM_URL && PLATFORM_TOKEN && PLATFORM_CHANNEL_ID),
     getAllowAll: () => allowAllSession,
@@ -1224,6 +1249,9 @@ export interface SendDmHandlerConfig {
    *  in-session calls; the MCP child wires this through to keep the
    *  permission-prompt UX bound to the session's own thread. */
   threadId?: string;
+  /** Session mode — 'channel' makes the prompt land at channel root
+   *  rather than as a thread reply (avoids "Invalid RootId" 400). */
+  mode?: 'channel' | 'thread';
   /** Timeout for the per-recipient permission prompt. */
   promptTimeoutMs: number;
   /**
@@ -1442,7 +1470,7 @@ async function promptForDmPermission(
     post = await cfg.api.createInteractivePost(
       message,
       [APPROVAL_EMOJIS[0], ALLOW_ALL_EMOJIS[0], DENIAL_EMOJIS[0]],
-      cfg.threadId,
+      postRootIdFor(cfg.mode, cfg.threadId),
     );
   } catch (err) {
     mcpLogger.error(`send_dm prompt failed: ${err}`);
@@ -1527,6 +1555,7 @@ async function handleSendDm(
     botChannelId: PLATFORM_CHANNEL_ID,
     sessionOwnerUsername: SESSION_OWNER_USERNAME,
     threadId: PLATFORM_THREAD_ID || undefined,
+    mode: PLATFORM_MODE === 'channel' ? 'channel' : 'thread',
     promptTimeoutMs: PERMISSION_TIMEOUT_MS,
     counts: sendDmCounts,
     allowedRecipients: sendDmAllowedRecipients,

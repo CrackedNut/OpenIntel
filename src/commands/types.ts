@@ -46,6 +46,12 @@ export interface InitialSessionOptions {
   forceInteractivePermissions?: boolean;
   /** Switch to existing worktree instead of creating new (from !worktree switch) */
   switchToExisting?: boolean;
+  /**
+   * Force thread-mode even when the triggering @mention landed at channel
+   * root. Set by `!thread` in the first message. The message handler reads
+   * this flag and clears `channelMode` before starting the session.
+   */
+  forceThreadMode?: boolean;
 }
 
 /** Result of command execution */

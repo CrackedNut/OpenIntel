@@ -1011,6 +1011,10 @@ export async function startSession(
   const cliOptions: ClaudeCliOptions = {
     workingDir,
     threadId: actualThreadId,
+    // Channel-mode forwarding: tells the spawned MCP child to omit root_id
+    // on its permission prompts. Otherwise it inherits PLATFORM_THREAD_ID
+    // (the channelId) and Mattermost rejects every prompt with 400.
+    mode: channelMode ? 'channel' : 'thread',
     permissionMode,
     sessionId: claudeSessionId,
     resume: false,
@@ -1289,6 +1293,11 @@ export async function resumeSession(
   const cliOptions: ClaudeCliOptions = {
     workingDir: state.workingDir,
     threadId: state.threadId,
+    // Channel-mode flag is persisted in `state.mode`; forward it to the
+    // resumed MCP child so its permission prompts still post at channel
+    // root after restart. Without this a paused channel session, when
+    // resumed, would start hitting the 400 again on every tool use.
+    mode: state.mode === 'channel' ? 'channel' : 'thread',
     permissionMode: resumePermissionMode,
     sessionId: state.claudeSessionId,
     resume: true,

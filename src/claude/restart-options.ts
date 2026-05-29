@@ -35,6 +35,10 @@ export function buildRestartCliOptions(
   const platformMcpConfig = session.platform.getMcpConfig();
   return {
     threadId: session.threadId,
+    // Preserve channel-mode across restarts (!cd, !permissions interactive,
+    // worktree switch) — otherwise a respawned MCP child would default to
+    // thread mode and the 400-on-prompt bug returns.
+    mode: session.mode === 'channel' ? 'channel' : 'thread',
     chrome: ctx.chromeEnabled,
     platformConfig: platformMcpConfig,
     logSessionId: session.sessionId,

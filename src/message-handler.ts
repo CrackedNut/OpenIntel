@@ -371,6 +371,27 @@ export async function handleMessage(
       }
     }
 
+    // !thread opt-out wiring. The handler in `commands/executor.ts` only
+    // sets `forceThreadMode`; the routing decisions live here because
+    // `threadRoot` / `channelMode` are message-handler concepts.
+    //   - Channel root + !thread → clear channelMode, re-anchor the
+    //     session at post.id so my replies thread off the @mention.
+    //   - Inside a thread + !thread → no-op (we're already thread-mode);
+    //     post a friendly hint so the user knows the command was redundant
+    //     but otherwise proceed normally.
+    let effectiveThreadRoot = threadRoot;
+    if (initialOptions.forceThreadMode) {
+      if (isChannelPost) {
+        initialOptions.channelMode = undefined;
+        effectiveThreadRoot = post.id;
+      } else {
+        await client.createPost(
+          `ℹ️ ${formatter.formatCode('!thread')} is a no-op inside a thread — sessions started here are already thread-mode.`,
+          directReplyTo,
+        );
+      }
+    }
+
     // If no prompt remains and no files and no worktree, don't start session
     // But if we have a worktree branch, we can start session with empty prompt
     if (!prompt.trim() && !files?.length && !worktreeBranch) {
@@ -386,7 +407,7 @@ export async function handleMessage(
         { prompt, files },
         worktreeBranch,
         username,
-        threadRoot,
+        effectiveThreadRoot,
         platformId,
         user?.displayName,
         post.id,  // triggeringPostId
@@ -398,7 +419,7 @@ export async function handleMessage(
     await session.startSession(
       { prompt, files },
       username,
-      threadRoot,
+      effectiveThreadRoot,
       platformId,
       user?.displayName,
       post.id,  // triggeringPostId - the actual message that started the session

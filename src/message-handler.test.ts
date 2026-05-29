@@ -1791,6 +1791,104 @@ describe('handleMessage', () => {
       expect(initialOptions.channelMode).toBeUndefined();
     });
 
+    test('!thread at channel root starts a thread-mode session anchored at the @mention post', async () => {
+      // Setup: no active/paused session, mention recognized, user authorized.
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!thread do the thing');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-thread-anchor',
+        rootId: '', // channel root → would default to channel-mode
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !thread do the thing',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      // startSession(options, username, threadRoot, platformId, displayName, triggeringPostId, initialOptions)
+      const threadRoot = startArgs[2];
+      const initialOptions = startArgs[6];
+      // The session anchors at the @mention post, not at the channel root.
+      expect(threadRoot).toBe('p-thread-anchor');
+      // !thread cleared channelMode — this is a normal thread session.
+      expect(initialOptions.channelMode).toBeUndefined();
+      // Sentinel survives so downstream code can introspect.
+      expect(initialOptions.forceThreadMode).toBe(true);
+    });
+
+    test('!thread inside an existing thread posts a hint and starts normally', async () => {
+      (session.registry.findByThreadId as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!thread please do this');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-inside',
+        rootId: 'existing-thread-root', // already inside a thread
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !thread please do this',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      // Hint was posted into the thread (replyTo === thread root, not undefined).
+      const calls = (client.createPost as any).mock.calls;
+      const hintCall = calls.find(([msg]: [string]) => msg.includes('no-op'));
+      expect(hintCall).toBeDefined();
+      expect(hintCall[1]).toBe('existing-thread-root');
+      // Session still starts normally, anchored at the existing thread root.
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      expect(startArgs[2]).toBe('existing-thread-root');
+    });
+
+    test('!thread stacks with !cd in the first message', async () => {
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!thread !cd /tmp do work');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-stack',
+        rootId: '', // channel root
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !thread !cd /tmp do work',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      const initialOptions = startArgs[6];
+      // !thread set forceThreadMode, !cd set workingDir — both fields land.
+      expect(initialOptions.forceThreadMode).toBe(true);
+      expect(initialOptions.workingDir).toBe('/tmp');
+      expect(initialOptions.channelMode).toBeUndefined();
+      // Session anchors at the @mention post (channel-mode override applied).
+      expect(startArgs[2]).toBe('p-stack');
+      // Prompt after both commands is what survived.
+      expect(startArgs[0].prompt).toBe('do work');
+    });
+
     test('direct error posts go to channel root (no thread reply) for channel-root posts', async () => {
       (client.isBotMentioned as any).mockImplementation(() => true);
       (client.extractPrompt as any).mockImplementation(() => '');
