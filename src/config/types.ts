@@ -183,6 +183,40 @@ export interface ClaudeAccount {
   displayName?: string;
 }
 
+/**
+ * Optional Hermes-style "Tier 1 stable" persona content prepended to every
+ * session's `--append-system-prompt`. Three file-based layers, all optional:
+ *
+ * - `soulPath`: persona/identity (defaults to `~/.hermes/SOUL.md`)
+ * - `directivesPath`: read-only behavioral loops (defaults to `~/.hermes/DIRECTIVES.md`)
+ * - `projectsIndexDir`: auto-builds a one-line-per-project index from
+ *   `<dir>/<project>/description.md` (defaults to `~/agent-memory/projects/`)
+ *
+ * Set `enabled: false` to disable entirely. Missing files are silently
+ * skipped — config never errors on absent paths, since the Hermes defaults
+ * are only relevant on machines that actually have a Hermes install.
+ */
+export interface AgentPersonaConfig {
+  enabled?: boolean;
+  soulPath?: string;
+  directivesPath?: string;
+  projectsIndexDir?: string;
+}
+
+/**
+ * Optional skills-index prepend. Scans `<skillsDir>/<skill>/SKILL.md` files
+ * for their `description:` frontmatter and emits an `## Available skills`
+ * block in the session's system prompt — so Claude can pick the right skill
+ * by name without searching first.
+ *
+ * Default skillsDir: `~/.claude/skills`. Empty / missing dir → no block.
+ * Set `enabled: false` to disable entirely.
+ */
+export interface SkillsIndexConfig {
+  enabled?: boolean;
+  skillsDir?: string;
+}
+
 export interface Config {
   version: number;
   workingDir: string;
@@ -195,6 +229,10 @@ export interface Config {
   stickyMessage?: StickyMessageCustomization; // Optional sticky message customization
   /** Optional Claude account pool. When omitted, bot runs in single-account mode. */
   claudeAccounts?: ClaudeAccount[];
+  /** Optional Hermes-style persona/directives/projects-index prepend. */
+  agentPersona?: AgentPersonaConfig;
+  /** Optional skills-index prepend — lists `~/.claude/skills/*` by name+description. */
+  skillsIndex?: SkillsIndexConfig;
   platforms: PlatformInstanceConfig[];
 }
 

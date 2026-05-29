@@ -379,5 +379,60 @@ describe('buildAppendSystemPrompt', () => {
     expect(prompt).not.toContain('bob@private.example.com');
     expect(prompt).not.toContain('- Bob B');
   });
+
+  it('includes the skills index block when skillsIndex points at a populated dir', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const { _clearSkillsIndexCache } = await import('./skills-index-builder.js');
+    _clearSkillsIndexCache();
+    const tmpRoot = mkdtempSync(join(tmpdir(), 'sp-skills-'));
+    try {
+      mkdirSync(join(tmpRoot, 'alpha'), { recursive: true });
+      writeFileSync(
+        join(tmpRoot, 'alpha', 'SKILL.md'),
+        '---\nname: alpha\ndescription: "Alpha does alpha."\n---\n',
+      );
+      const platform = fakePlatform({});
+      const prompt = await buildAppendSystemPrompt(
+        platform,
+        'mm',
+        '/repo',
+        't1',
+        'alice',
+        ['alice'],
+        'STATIC',
+        fakeStore({}),
+        { skillsIndex: { skillsDir: tmpRoot } },
+      );
+      expect(prompt).toContain('## Available skills');
+      expect(prompt).toContain('- **alpha** — Alpha does alpha.');
+      // Skills block lives before the session context line so it shares the
+      // stable prefix-cache window.
+      const skillsIdx = prompt.indexOf('## Available skills');
+      const sessionIdx = prompt.indexOf('**Platform:**');
+      expect(skillsIdx).toBeGreaterThanOrEqual(0);
+      expect(sessionIdx).toBeGreaterThan(skillsIdx);
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+      _clearSkillsIndexCache();
+    }
+  });
+
+  it('omits the skills index when skillsIndex is undefined or disabled', async () => {
+    const platform = fakePlatform({});
+    const prompt = await buildAppendSystemPrompt(
+      platform,
+      'mm',
+      '/repo',
+      't1',
+      'alice',
+      ['alice'],
+      'STATIC',
+      fakeStore({}),
+      { skillsIndex: { enabled: false } },
+    );
+    expect(prompt).not.toContain('## Available skills');
+  });
 });
 
