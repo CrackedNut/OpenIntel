@@ -87,9 +87,14 @@ export async function post(
 /**
  * Create a post and automatically track it as the last message for jump-to-bottom links.
  * This is the core helper used by all post functions to ensure consistent tracking.
+ *
+ * Channel-mode sessions (`session.mode === 'channel'`) post at the channel
+ * root rather than as a thread reply — passing `undefined` for `threadId`
+ * causes Mattermost/Slack clients to omit `root_id` / `thread_ts`.
  */
 async function createPostAndTrack(session: Session, message: string): Promise<PlatformPost> {
-  const post = await session.platform.createPost(message, session.threadId);
+  const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+  const post = await session.platform.createPost(message, replyTo);
   // Track this post for jump-to-bottom links in the sticky message
   updateLastMessage(session, post);
   return post;

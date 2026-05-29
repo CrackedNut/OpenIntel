@@ -21,6 +21,7 @@ export type {
   PermissionMode,
   OverheadVisibility,
   PlatformOverhead,
+  PlatformMode,
 } from './types.js';
 export {
   LIMITS_DEFAULTS,
@@ -33,6 +34,10 @@ export {
   DEFAULT_OVERHEAD_VISIBILITY,
   isOverheadVisibility,
   resolveOverheadVisibility,
+  PLATFORM_MODE_VALUES,
+  DEFAULT_PLATFORM_MODE,
+  isPlatformMode,
+  resolvePlatformMode,
 } from './types.js';
 
 import type { Config, WorktreeMode as WorktreeModeType, PermissionMode, OverheadVisibility } from './types.js';

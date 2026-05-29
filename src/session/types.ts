@@ -250,11 +250,32 @@ export function markClaudeResponded(session: Session): void {
 export interface Session {
   // Identity
   platformId: string;       // Which platform instance (e.g., 'mattermost-main')
-  threadId: string;         // Thread ID within that platform
-  sessionId: string;        // Composite key "platformId:threadId"
+  threadId: string;         // Thread mode: the thread ID. Channel mode: the channel ID.
+  sessionId: string;        // Composite key — see `mode` below for the shape.
   claudeSessionId: string;  // UUID for --session-id / --resume
   startedBy: string;            // Username (for permissions)
   startedByDisplayName?: string; // Display name (for UI)
+  /**
+   * Session model for this platform.
+   * - `'thread'` (default): one session per thread; `sessionId =
+   *   "platformId:threadId"`; bot posts as thread replies.
+   * - `'channel'`: one session per (channel, user); `sessionId =
+   *   "platformId:channelId:userId"`; bot posts as channel root messages
+   *   (no thread reply); `userId` is set.
+   * Optional + back-compat: missing/undefined → `'thread'`.
+   */
+  mode?: import('../config/index.js').PlatformMode;
+  /**
+   * Platform user ID the session is bound to. Set only when `mode === 'channel'`
+   * so the bot can route a channel-level message to the right user's session.
+   * Not used in thread mode.
+   */
+  userId?: string;
+  /**
+   * Channel ID the session lives in. Set in both modes for convenience but
+   * load-bearing in channel mode where it's also the `threadId` overload.
+   */
+  channelId?: string;
   startedAt: Date;
   lastActivityAt: Date;
   sessionNumber: number;  // Session # when created

@@ -104,6 +104,14 @@ export class SessionManager extends EventEmitter {
   // Per-platform overhead visibility (sessionHeader / stickyMessage modes)
   private platformOverhead: Map<string, PlatformOverhead> = new Map();
 
+  /**
+   * Per-platform session model. `'thread'` (default) keys sessions by
+   * `platformId:threadId`; `'channel'` keys them by
+   * `platformId:channelId:userId` so each user in the channel has their own
+   * concurrent session. Populated by `addPlatform`.
+   */
+  private platformMode: Map<string, import('../config/index.js').PlatformMode> = new Map();
+
   // Auto-update manager (set via setAutoUpdateManager)
   private autoUpdateManager: commands.AutoUpdateManagerInterface | null = null;
 
@@ -170,13 +178,15 @@ export class SessionManager extends EventEmitter {
   addPlatform(
     platformId: string,
     client: PlatformClient,
-    overhead?: Partial<PlatformOverhead>
+    overhead?: Partial<PlatformOverhead>,
+    mode?: import('../config/index.js').PlatformMode,
   ): void {
     this.platforms.set(platformId, client);
     this.platformOverhead.set(platformId, {
       sessionHeader: overhead?.sessionHeader ?? DEFAULT_OVERHEAD_VISIBILITY,
       stickyMessage: overhead?.stickyMessage ?? DEFAULT_OVERHEAD_VISIBILITY,
     });
+    this.platformMode.set(platformId, mode ?? 'thread');
     client.on('message', (post, user) => this.handleMessage(platformId, post, user));
     client.on('reaction', (reaction, user) => {
       if (user) {
@@ -369,8 +379,29 @@ export class SessionManager extends EventEmitter {
   // Session ID and Post Index
   // ---------------------------------------------------------------------------
 
-  private getSessionId(platformId: string, threadId: string): string {
+  /**
+   * Compute the composite session key.
+   *
+   * Thread mode → `platformId:threadId`. Channel mode adds the user dimension
+   * because multiple users can have parallel sessions in the same channel,
+   * yielding `platformId:channelId:userId`. The `userId` parameter is
+   * required iff the platform's mode is `'channel'`; pass `undefined` for
+   * thread-mode platforms.
+   */
+  private getSessionId(platformId: string, threadId: string, userId?: string): string {
+    if (this.platformMode.get(platformId) === 'channel' && userId) {
+      return `${platformId}:${threadId}:${userId}`;
+    }
     return `${platformId}:${threadId}`;
+  }
+
+  /**
+   * Look up the resolved mode for a platform.
+   * Exposed so the message handler and lifecycle paths can branch on mode
+   * without re-reading the config.
+   */
+  getPlatformMode(platformId: string): import('../config/index.js').PlatformMode {
+    return this.platformMode.get(platformId) ?? 'thread';
   }
 
   // ---------------------------------------------------------------------------
@@ -647,6 +678,9 @@ export class SessionManager extends EventEmitter {
       resumeFailCount: session.lifecycle.resumeFailCount,
       claudeAccountId: session.claudeAccountId,
       sessionHeaderMode: session.sessionHeaderMode,
+      mode: session.mode,
+      userId: session.userId,
+      channelId: session.channelId,
     };
     this.sessionStore.save(session.sessionId, state);
   }

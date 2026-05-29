@@ -1330,6 +1330,12 @@ export async function resumeSession(
     isProcessing: false,  // Resumed sessions are idle until user sends a message
     lifecyclePostId: state.lifecyclePostId,  // Pass through for resume message handling
     recentEvents: [],  // Bug report context: recent tool uses/errors (cleared on resume)
+    // Channel-mode identity. Missing in old persisted records → thread-mode
+    // behavior preserved exactly. Channel-mode sessions resume with their
+    // userId so each user's stream stays separate after a bot restart.
+    mode: state.mode,
+    userId: state.userId,
+    channelId: state.channelId,
     // Thread logger for persisting events to disk (appends to existing log)
     threadLogger: createThreadLogger(platformId, state.threadId, state.claudeSessionId, {
       enabled: ctx.config.threadLogsEnabled ?? true,

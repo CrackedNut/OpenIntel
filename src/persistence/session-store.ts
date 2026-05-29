@@ -34,7 +34,18 @@ export interface PersistedContextPrompt {
  */
 export interface PersistedSession {
   platformId: string;            // Which platform instance (e.g., 'default', 'mattermost-main')
-  threadId: string;              // Thread ID within that platform
+  threadId: string;              // Thread mode: thread ID. Channel mode: channel ID.
+  /**
+   * Session model. Default `'thread'` for backward compat with old
+   * `sessions.json` files. `'channel'` mode adds `userId` so the session
+   * key is `platformId:channelId:userId` instead of `platformId:threadId`.
+   * See `PlatformMode` in `src/config/types.ts`.
+   */
+  mode?: 'thread' | 'channel';
+  /** Platform user ID (only set in `'channel'` mode). */
+  userId?: string;
+  /** Channel ID (set in both modes; load-bearing in channel mode). */
+  channelId?: string;
   claudeSessionId: string;       // UUID for --session-id / --resume
   startedBy: string;             // Username who started the session
   startedByDisplayName?: string; // Display name for UI

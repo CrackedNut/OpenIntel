@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Channel-mode foundation (`mode: 'thread' | 'channel'` per platform).** New `mode` field on `PlatformInstanceConfig` lets a deployment opt out of the historical thread-per-session model. When `mode: channel` is set, sessions are keyed by `platformId:channelId:userId` (so each user in the channel gets their own concurrent stream) and the bot's reply path posts at the channel root rather than as a thread reply. The plumbing in this PR — config flag, `Session.mode`/`userId`/`channelId` fields, `PersistedSession` round-trip, per-platform mode tracking in `SessionManager.platformMode`, three-part `getSessionId`, and the conditional `replyTo` in `createPostAndTrack` — is the foundation that subsequent PRs will build on. **Not yet wired:** `message-handler.ts` still routes by `threadRoot`, so brand-new channel-mode sessions don't yet get created on inbound mentions. Default mode is `'thread'` everywhere, so existing deployments are completely unaffected.
+
 ## [1.16.1] - 2026-05-22
 
 ### Security

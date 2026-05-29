@@ -6,6 +6,7 @@ import {
   configExists as checkConfigExists,
   resolvePermissionMode,
   resolveOverheadVisibility,
+  resolvePlatformMode,
   isOverheadVisibility,
   OVERHEAD_VISIBILITY_VALUES,
   type MattermostPlatformConfig,
@@ -619,7 +620,10 @@ async function startWithoutDaemon() {
     const client = createPlatformClient(platformConfig);
     platforms.set(platformConfig.id, client);
 
-    // Register with session manager (passes per-platform overhead visibility)
+    // Register with session manager (passes per-platform overhead visibility
+    // and the session model — `mode: 'channel'` makes the bot reply as root
+    // posts and key sessions by `channelId:userId` so each user gets their
+    // own concurrent stream).
     session.addPlatform(platformConfig.id, client, {
       sessionHeader: resolveOverheadVisibility(
         platformConfig.sessionHeader,
@@ -629,7 +633,10 @@ async function startWithoutDaemon() {
         platformConfig.stickyMessage,
         `platforms[${platformConfig.id}].stickyMessage`,
       ),
-    });
+    }, resolvePlatformMode(
+      platformConfig.mode,
+      `platforms[${platformConfig.id}].mode`,
+    ));
 
     // Wire up platform events
     wirePlatformEvents(platformConfig.id, client, session, ui);
