@@ -201,7 +201,6 @@ describe('post() factory function', () => {
     const session = createMockSession();
     session.mode = 'channel';
     session.channelId = 'channel-9';
-    session.userId = 'u-9';
     await post(session, 'info', 'channel-mode reply');
 
     // Channel-mode sessions reply at the channel root, so we pass undefined

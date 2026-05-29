@@ -36,15 +36,14 @@ export interface PersistedSession {
   platformId: string;            // Which platform instance (e.g., 'default', 'mattermost-main')
   threadId: string;              // Thread mode: thread ID. Channel mode: channel ID.
   /**
-   * Session model. Default `'thread'` for backward compat with old
-   * `sessions.json` files. `'channel'` mode adds `userId` so the session
-   * key is `platformId:channelId:userId` instead of `platformId:threadId`.
+   * Session reply model. Default `'thread'` for backward compat with old
+   * `sessions.json` files. `'channel'` means the session was started at
+   * the channel root, replies as channel root posts, and is shared across
+   * all allowed users in the channel. Keyed by `platformId:channelId`.
    * See `PlatformMode` in `src/config/types.ts`.
    */
   mode?: 'thread' | 'channel';
-  /** Platform user ID (only set in `'channel'` mode). */
-  userId?: string;
-  /** Channel ID (set in both modes; load-bearing in channel mode). */
+  /** Channel ID (load-bearing in channel mode; informational in thread mode). */
   channelId?: string;
   claudeSessionId: string;       // UUID for --session-id / --resume
   startedBy: string;             // Username who started the session

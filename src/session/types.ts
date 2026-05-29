@@ -4,7 +4,7 @@
 
 import type { ClaudeCli } from '../claude/cli.js';
 import type { PlatformClient, PlatformFile } from '../platform/index.js';
-import type { OverheadVisibility, PermissionMode } from '../config/index.js';
+import type { OverheadVisibility, PermissionMode, PlatformMode } from '../config/index.js';
 import type { WorktreeInfo } from '../persistence/session-store.js';
 import type { SessionInfo } from '../ui/types.js';
 import type { RecentEvent, ErrorContext } from '../operations/bug-report/index.js';
@@ -46,13 +46,14 @@ export interface InitialSessionOptions {
   switchToExisting?: boolean;
   /**
    * Channel-mode session identity. Set by the message handler when the
-   * triggering platform is configured with `mode: 'channel'`. When present,
-   * the new session is bound to `(channelId, userId)` and replies at the
-   * channel root instead of in a thread.
+   * triggering @mention landed at the channel root (no `post.rootId`).
+   * When present, the new session is a SHARED channel session keyed by
+   * `(platformId, channelId)` — every allowed user in the channel
+   * participates in the same conversation, and the bot replies as channel
+   * root posts (not thread replies).
    */
   channelMode?: {
     channelId: string;
-    userId: string;
   };
 }
 
@@ -266,24 +267,20 @@ export interface Session {
   startedBy: string;            // Username (for permissions)
   startedByDisplayName?: string; // Display name (for UI)
   /**
-   * Session model for this platform.
-   * - `'thread'` (default): one session per thread; `sessionId =
-   *   "platformId:threadId"`; bot posts as thread replies.
-   * - `'channel'`: one session per (channel, user); `sessionId =
-   *   "platformId:channelId:userId"`; bot posts as channel root messages
-   *   (no thread reply); `userId` is set.
-   * Optional + back-compat: missing/undefined → `'thread'`.
+   * Session reply model, decided at session start time from where the
+   * triggering @mention landed (NOT from any config field):
+   * - `'thread'` (default / undefined): @mention was a thread reply.
+   *   `sessionId = "platformId:threadId"`; bot replies as thread replies.
+   * - `'channel'`: @mention was at the channel root. `sessionId =
+   *   "platformId:channelId"`; bot replies as channel root posts; session
+   *   is SHARED across every allowed user in the channel.
+   * Optional + back-compat: missing/undefined → thread mode.
    */
-  mode?: import('../config/index.js').PlatformMode;
+  mode?: PlatformMode;
   /**
-   * Platform user ID the session is bound to. Set only when `mode === 'channel'`
-   * so the bot can route a channel-level message to the right user's session.
-   * Not used in thread mode.
-   */
-  userId?: string;
-  /**
-   * Channel ID the session lives in. Set in both modes for convenience but
-   * load-bearing in channel mode where it's also the `threadId` overload.
+   * Channel ID the session lives in. Set in both modes for convenience.
+   * Load-bearing in channel mode where it forms the session key's second
+   * segment (`platformId:channelId`).
    */
   channelId?: string;
   startedAt: Date;

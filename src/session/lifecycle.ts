@@ -807,14 +807,15 @@ export async function startSession(
 ): Promise<void> {
   const threadId = replyToPostId || '';
 
-  // Channel-mode identity: when the platform is configured with
-  // `mode: 'channel'`, the session is keyed by (channelId, userId) instead
-  // of the thread root. The message handler stashes channelId + userId in
-  // `initialOptions.channelMode`; here we use them to compute the right
-  // composite session ID so two users in the same channel get parallel
-  // sessions rather than colliding on the same key.
+  // Channel-mode identity: when the triggering @mention landed at the
+  // channel root, the session is SHARED across the channel — keyed by
+  // `platformId:channelId` instead of `platformId:threadId`. All allowed
+  // users in the channel participate in the same conversation. The message
+  // handler stashes the channelId in `initialOptions.channelMode`; we use
+  // it as the second segment of the composite key here.
   const channelMode = initialOptions?.channelMode;
-  const existingSessionId = ctx.ops.getSessionId(platformId, threadId, channelMode?.userId);
+  const keySegment = channelMode?.channelId ?? threadId;
+  const existingSessionId = ctx.ops.getSessionId(platformId, keySegment);
   const existingSession = mutableSessions(ctx).get(existingSessionId);
   if (existingSession && existingSession.claude.isRunning()) {
     // Send as follow-up instead
@@ -891,7 +892,7 @@ export async function startSession(
     }
   }
   const actualThreadId = replyToPostId || (startPost ? startPost.id : '');
-  const sessionId = ctx.ops.getSessionId(platformId, actualThreadId, channelMode?.userId);
+  const sessionId = ctx.ops.getSessionId(platformId, channelMode?.channelId ?? actualThreadId);
 
   // Start typing indicator early so user sees activity during session setup
   // We'll set up a proper interval-based typing indicator once the session is created
@@ -1030,10 +1031,10 @@ export async function startSession(
     claudeSessionId,
     claudeAccountId: claudeAccount?.id,
     // Channel-mode identity: when present, the bot replies at the channel
-    // root and the session is keyed by (channelId, userId). Thread-mode
-    // sessions leave these undefined to preserve back-compat shape.
+    // root and the session is shared across every allowed user in the
+    // channel. Thread-mode sessions leave these undefined to preserve the
+    // back-compat shape of `Session` and `PersistedSession`.
     mode: channelMode ? 'channel' : undefined,
-    userId: channelMode?.userId,
     channelId: channelMode?.channelId,
     startedBy: username,
     startedByDisplayName: displayName,
@@ -1343,10 +1344,10 @@ export async function resumeSession(
     lifecyclePostId: state.lifecyclePostId,  // Pass through for resume message handling
     recentEvents: [],  // Bug report context: recent tool uses/errors (cleared on resume)
     // Channel-mode identity. Missing in old persisted records → thread-mode
-    // behavior preserved exactly. Channel-mode sessions resume with their
-    // userId so each user's stream stays separate after a bot restart.
+    // behavior preserved exactly. Channel-mode sessions are shared across
+    // all allowed users in the channel; the persisted `channelId` is what
+    // the registry's `findByChannelId` lookup matches against on resume.
     mode: state.mode,
-    userId: state.userId,
     channelId: state.channelId,
     // Thread logger for persisting events to disk (appends to existing log)
     threadLogger: createThreadLogger(platformId, state.threadId, state.claudeSessionId, {

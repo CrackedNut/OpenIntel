@@ -647,29 +647,18 @@ describe('SessionRegistry', () => {
     });
   });
 
-  describe('findByChannelUser (channel mode)', () => {
-    it('matches a channel-mode session by (platformId, channelId, userId)', () => {
+  describe('findByChannelId (shared channel mode)', () => {
+    it('matches the shared channel-mode session by (platformId, channelId)', () => {
       const sessionA = createMockSession({
         platformId: 'mm',
         threadId: 'channel-1',
-        sessionId: 'mm:channel-1:user-A',
+        sessionId: 'mm:channel-1',
         mode: 'channel',
         channelId: 'channel-1',
-        userId: 'user-A',
-      });
-      const sessionB = createMockSession({
-        platformId: 'mm',
-        threadId: 'channel-1',
-        sessionId: 'mm:channel-1:user-B',
-        mode: 'channel',
-        channelId: 'channel-1',
-        userId: 'user-B',
       });
       registry.register(sessionA);
-      registry.register(sessionB);
 
-      expect(registry.findByChannelUser('mm', 'channel-1', 'user-A')?.sessionId).toBe('mm:channel-1:user-A');
-      expect(registry.findByChannelUser('mm', 'channel-1', 'user-B')?.sessionId).toBe('mm:channel-1:user-B');
+      expect(registry.findByChannelId('mm', 'channel-1')?.sessionId).toBe('mm:channel-1');
     });
 
     it('returns undefined when no channel-mode session matches', () => {
@@ -677,30 +666,43 @@ describe('SessionRegistry', () => {
         platformId: 'mm',
         mode: 'channel',
         channelId: 'channel-1',
-        userId: 'user-A',
       });
       registry.register(session);
 
-      expect(registry.findByChannelUser('mm', 'channel-1', 'user-Z')).toBeUndefined();
-      expect(registry.findByChannelUser('mm', 'channel-2', 'user-A')).toBeUndefined();
-      expect(registry.findByChannelUser('slack', 'channel-1', 'user-A')).toBeUndefined();
+      expect(registry.findByChannelId('mm', 'channel-2')).toBeUndefined();
+      expect(registry.findByChannelId('slack', 'channel-1')).toBeUndefined();
     });
 
     it('does not match thread-mode sessions even when the IDs align', () => {
       // A thread-mode session whose threadId happens to equal a channelId
-      // must not be reachable via findByChannelUser — channel-mode lookups
+      // must not be reachable via findByChannelId — channel-mode lookups
       // are mode-scoped to prevent cross-mode collisions.
       const threadSession = createMockSession({
         platformId: 'mm',
         threadId: 'channel-1',
         sessionId: 'mm:channel-1',
-        userId: 'user-A',
         channelId: 'channel-1',
         // mode is undefined → thread mode by default
       });
       registry.register(threadSession);
 
-      expect(registry.findByChannelUser('mm', 'channel-1', 'user-A')).toBeUndefined();
+      expect(registry.findByChannelId('mm', 'channel-1')).toBeUndefined();
+    });
+
+    it('returns the same shared session regardless of speaker (multi-user collab)', () => {
+      const shared = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1',
+        mode: 'channel',
+        channelId: 'channel-1',
+      });
+      registry.register(shared);
+
+      // No matter who's posting in the channel, the lookup resolves to the
+      // same shared session — Alice and Bob are talking to the same Claude.
+      expect(registry.findByChannelId('mm', 'channel-1')?.sessionId).toBe('mm:channel-1');
+      expect(registry.findByChannelId('mm', 'channel-1')?.sessionId).toBe('mm:channel-1');
     });
   });
 });

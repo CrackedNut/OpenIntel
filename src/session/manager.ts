@@ -104,14 +104,6 @@ export class SessionManager extends EventEmitter {
   // Per-platform overhead visibility (sessionHeader / stickyMessage modes)
   private platformOverhead: Map<string, PlatformOverhead> = new Map();
 
-  /**
-   * Per-platform session model. `'thread'` (default) keys sessions by
-   * `platformId:threadId`; `'channel'` keys them by
-   * `platformId:channelId:userId` so each user in the channel has their own
-   * concurrent session. Populated by `addPlatform`.
-   */
-  private platformMode: Map<string, import('../config/index.js').PlatformMode> = new Map();
-
   // Auto-update manager (set via setAutoUpdateManager)
   private autoUpdateManager: commands.AutoUpdateManagerInterface | null = null;
 
@@ -179,14 +171,12 @@ export class SessionManager extends EventEmitter {
     platformId: string,
     client: PlatformClient,
     overhead?: Partial<PlatformOverhead>,
-    mode?: import('../config/index.js').PlatformMode,
   ): void {
     this.platforms.set(platformId, client);
     this.platformOverhead.set(platformId, {
       sessionHeader: overhead?.sessionHeader ?? DEFAULT_OVERHEAD_VISIBILITY,
       stickyMessage: overhead?.stickyMessage ?? DEFAULT_OVERHEAD_VISIBILITY,
     });
-    this.platformMode.set(platformId, mode ?? 'thread');
     client.on('message', (post, user) => this.handleMessage(platformId, post, user));
     client.on('reaction', (reaction, user) => {
       if (user) {
@@ -304,7 +294,7 @@ export class SessionManager extends EventEmitter {
 
     const ops: SessionOperations = {
       // Session lookup
-      getSessionId: (pid, tid, uid) => this.getSessionId(pid, tid, uid),
+      getSessionId: (pid, tid) => this.getSessionId(pid, tid),
       findSessionByThreadId: (tid) => this.findSessionByThreadId(tid),
 
       // Post management
@@ -382,26 +372,16 @@ export class SessionManager extends EventEmitter {
   /**
    * Compute the composite session key.
    *
-   * Thread mode → `platformId:threadId`. Channel mode adds the user dimension
-   * because multiple users can have parallel sessions in the same channel,
-   * yielding `platformId:channelId:userId`. The `userId` parameter is
-   * required iff the platform's mode is `'channel'`; pass `undefined` for
-   * thread-mode platforms.
+   * Both modes use a two-part key — the second segment is either the thread
+   * root ID (thread mode) or the channel ID (channel mode). Channel-mode
+   * sessions are SHARED across all allowed users in the channel, so no user
+   * dimension is needed in the key. Disambiguation between thread- and
+   * channel-mode sessions in the same channel comes from the message
+   * handler reading `post.rootId` per inbound message; it never collides
+   * because a thread root ID is never equal to its parent channel ID.
    */
-  private getSessionId(platformId: string, threadId: string, userId?: string): string {
-    if (this.platformMode.get(platformId) === 'channel' && userId) {
-      return `${platformId}:${threadId}:${userId}`;
-    }
-    return `${platformId}:${threadId}`;
-  }
-
-  /**
-   * Look up the resolved mode for a platform.
-   * Exposed so the message handler and lifecycle paths can branch on mode
-   * without re-reading the config.
-   */
-  getPlatformMode(platformId: string): import('../config/index.js').PlatformMode {
-    return this.platformMode.get(platformId) ?? 'thread';
+  private getSessionId(platformId: string, idSegment: string): string {
+    return `${platformId}:${idSegment}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -679,7 +659,6 @@ export class SessionManager extends EventEmitter {
       claudeAccountId: session.claudeAccountId,
       sessionHeaderMode: session.sessionHeaderMode,
       mode: session.mode,
-      userId: session.userId,
       channelId: session.channelId,
     };
     this.sessionStore.save(session.sessionId, state);
@@ -1010,12 +989,13 @@ export class SessionManager extends EventEmitter {
   }
 
   /**
-   * Public lookup for channel-mode sessions, keyed by `(channelId, userId)`.
-   * Used by `message-handler.ts` when the platform's mode is `'channel'` to
-   * route an inbound message to the right user's session.
+   * Public lookup for the shared channel-mode session in `(platformId,
+   * channelId)`. Used by `message-handler.ts` when an inbound post lands at
+   * the channel root (no `rootId`) to route it into the existing shared
+   * session if any.
    */
-  findChannelSession(platformId: string, channelId: string, userId: string): Session | undefined {
-    return this.registry.findByChannelUser(platformId, channelId, userId);
+  findChannelSession(platformId: string, channelId: string): Session | undefined {
+    return this.registry.findByChannelId(platformId, channelId);
   }
 
 

@@ -58,21 +58,25 @@ export async function handleMessage(
   const message = post.message;
   const formatter = client.getFormatter();
 
-  // Channel-mode detection. In `'channel'` mode the bot replies as root posts
-  // in the channel (no thread reply) and each user gets their own session
-  // keyed by `(channelId, userId)`. In `'thread'` mode (default, historical
-  // behavior) the bot routes by the thread root and replies inside the
-  // thread. The session lookup, the post-helper reply target, and the
-  // `initialOptions.channelMode` plumbing all branch on this flag.
-  const platformMode = session.getPlatformMode(platformId);
-  const isChannelMode = platformMode === 'channel';
-  // `threadRoot` is the historical routing key used for thread-mode posts
-  // and lookups. In channel mode it carries the channelId so direct
-  // `createPost(msg, threadRoot)` calls still target the right channel —
-  // but for those calls we pass `undefined` instead so the message lands at
-  // the channel root rather than as a stray thread reply.
-  const threadRoot = isChannelMode ? post.channelId : (post.rootId || post.id);
-  const directReplyTo = isChannelMode ? undefined : threadRoot;
+  // Mode is decided per-message from where the post lands. No config flag.
+  //
+  // - `post.rootId` set → it's a thread reply → route to thread-mode session
+  //   keyed by `platformId:threadRoot`; bot replies inside the thread.
+  // - `post.rootId` empty → it's a channel root post → route to the shared
+  //   channel-mode session keyed by `platformId:channelId`; bot replies as
+  //   channel root posts; every allowed user in the channel participates.
+  //
+  // Both modes can coexist in the same channel: a shared channel-mode
+  // session at the root plus any number of thread-mode sessions inside
+  // threads in that channel.
+  const isChannelPost = !post.rootId;
+  // `threadRoot` is the routing key for thread-mode lookups. For channel
+  // posts it carries the channelId (used as the second segment of the
+  // composite session key). For direct `createPost(msg, threadRoot)` calls
+  // we use `directReplyTo` instead — `undefined` in channel mode so the
+  // message lands at channel root rather than as a stray thread reply.
+  const threadRoot = isChannelPost ? post.channelId : (post.rootId || post.id);
+  const directReplyTo = isChannelPost ? undefined : threadRoot;
 
   try {
     // Check for !kill command (emergency shutdown)
@@ -115,12 +119,13 @@ export async function handleMessage(
 
     // Follow-up in active session.
     //
-    // Thread mode: lookup by threadRoot (post's thread root) — the historical
-    // path. Channel mode: lookup by `(channelId, userId)` so two users in the
-    // same channel can hold parallel sessions; the post's `rootId` is
-    // meaningless because channel-mode bot replies live at the channel root.
-    const activeSession = isChannelMode && user
-      ? session.findChannelSession(platformId, post.channelId, user.id)
+    // Thread post → look up by threadRoot (the existing thread-mode path).
+    // Channel post → look up the shared channel-mode session by channelId.
+    // The two lookups are mode-scoped: a thread-mode session whose
+    // threadId happens to match a channelId is NOT reachable via
+    // `findChannelSession`, so the modes can't cross.
+    const activeSession = isChannelPost
+      ? session.findChannelSession(platformId, post.channelId)
       : session.registry.findByThreadId(threadRoot);
     if (activeSession) {
       // If message starts with @mention to someone else, track it as side conversation (if from approved user)
@@ -293,10 +298,10 @@ export async function handleMessage(
     // Uses unified command executor with stacking support
     // ---------------------------------------------------------------------------
     const initialOptions: InitialSessionOptions = {};
-    // Channel-mode: bind the new session to this user so the channel can host
-    // multiple parallel sessions, one per user.
-    if (isChannelMode && user) {
-      initialOptions.channelMode = { channelId: post.channelId, userId: user.id };
+    // Channel-mode start: the @mention landed at channel root, so the new
+    // session is shared across the whole channel.
+    if (isChannelPost) {
+      initialOptions.channelMode = { channelId: post.channelId };
     }
     let worktreeBranch: string | undefined;
 

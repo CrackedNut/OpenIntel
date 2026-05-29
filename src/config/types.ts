@@ -199,48 +199,30 @@ export interface Config {
 }
 
 /**
- * Per-platform session model.
+ * Per-session reply model. Decided AT SESSION START TIME from where the
+ * triggering @mention landed, NOT from any config field:
  *
- * - `'thread'` (default): @mentioning the bot in a channel opens a Mattermost
- *   thread / Slack thread; all session messages live inside that thread.
- *   Sessions are keyed by `platformId:threadId`. This is the historical
- *   behavior.
- * - `'channel'`: the bot replies as root posts in the channel itself (no
- *   thread). Sessions are keyed by `platformId:channelId:userId` so each
- *   user in the channel gets their own concurrent session — multiple users
- *   = multiple parallel Claude instances in the same channel.
+ * - `'thread'`: the @mention was a reply inside an existing thread (Mattermost
+ *   thread reply / Slack threaded reply). Session is keyed by
+ *   `platformId:threadId` and the bot continues replying in that thread.
+ *   This is the historical behavior.
+ * - `'channel'`: the @mention was a root-level message in the channel (no
+ *   parent thread). Session is keyed by `platformId:channelId` and is
+ *   SHARED by every allowed user in that channel — Alice and Bob talking
+ *   in the same channel are in the same session, and the bot's replies are
+ *   channel root posts. Claude sees `@alice:` / `@bob:` attribution
+ *   prefixes on inbound messages so it can disambiguate speakers.
  *
- * The `mode` field is per-platform so a deployment can mix-and-match;
- * default is `'thread'` for backward compat with every existing config.yaml.
+ * The same channel can host both modes concurrently: one shared channel
+ * session AND any number of threaded sessions inside threads in that
+ * channel. There is no global / per-platform mode toggle.
  */
 export type PlatformMode = 'thread' | 'channel';
-
-export const PLATFORM_MODE_VALUES: readonly PlatformMode[] = ['thread', 'channel'] as const;
-export const DEFAULT_PLATFORM_MODE: PlatformMode = 'thread';
-
-export function isPlatformMode(value: unknown): value is PlatformMode {
-  return typeof value === 'string' && (PLATFORM_MODE_VALUES as readonly string[]).includes(value);
-}
-
-export function resolvePlatformMode(value: unknown, fieldPath: string): PlatformMode {
-  if (value === undefined || value === null) return DEFAULT_PLATFORM_MODE;
-  if (isPlatformMode(value)) return value;
-  throw new Error(
-    `Invalid ${fieldPath}: expected one of ${PLATFORM_MODE_VALUES.join(', ')}, got ${JSON.stringify(value)}`,
-  );
-}
 
 export interface PlatformInstanceConfig {
   id: string;
   type: 'mattermost' | 'slack';
   displayName: string;
-  /**
-   * Session model. `'thread'` (default): one session per Mattermost/Slack
-   * thread. `'channel'`: bot replies as root posts in the channel and each
-   * user gets their own concurrent session keyed by `channelId:userId`.
-   * See `PlatformMode`.
-   */
-  mode?: PlatformMode;
   /**
    * Per-thread session header visibility. Default `'full'`.
    * `'minimal'` keeps only the one-line status bar; `'hidden'` skips the

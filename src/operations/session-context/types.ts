@@ -95,11 +95,12 @@ export interface SessionOperations {
 
   /**
    * Compute the composite session ID. Thread mode → `platformId:threadId`.
-   * Channel mode → `platformId:threadId:userId` (where `threadId` carries
-   * the channelId in channel mode). Pass `userId` when the platform is
-   * configured with `mode: 'channel'`; omit for thread mode.
+   * Channel mode → `platformId:channelId` (channelId stands in for threadId
+   * in the second segment). The session lookup at message-handler time
+   * picks the right segment based on whether the inbound post has a
+   * `rootId`; the key shape itself is uniform.
    */
-  getSessionId(platformId: string, threadId: string, userId?: string): string;
+  getSessionId(platformId: string, threadId: string): string;
 
   /** Find session by thread ID (searches across all platforms) */
   findSessionByThreadId(threadId: string): Session | undefined;
