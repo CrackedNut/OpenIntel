@@ -877,12 +877,17 @@ export async function startSession(
   // in the thread, anchored at `replyToPostId`.
   const startFormatter = platform.getFormatter();
   const skipHeaderPost = sessionHeaderMode === 'hidden';
+  // Channel-mode: the start post must land at channel root, not in a
+  // (non-existent) thread rooted at the channelId. `replyToPostId` carries
+  // the channelId here, which Mattermost would otherwise treat as an
+  // invalid root_id and orphan the post.
+  const startPostReplyTo = channelMode ? undefined : replyToPostId;
   let startPost: { id: string } | undefined;
   if (!skipHeaderPost) {
     startPost = await withErrorHandling(
       () => platform.createPost(
         startFormatter.formatItalic('Claude Threads session starting...'),
-        replyToPostId
+        startPostReplyTo
       ),
       { action: 'Create session post' }
     );

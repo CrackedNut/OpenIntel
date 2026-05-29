@@ -808,11 +808,12 @@ export class SessionManager extends EventEmitter {
         const fmt = session.platform.getFormatter();
         const pauseMessage = `⏸️ ${fmt.formatBold('Platform disabled')} - session paused. Re-enable platform to resume.`;
 
-        // Update or create lifecycle post
+        // Update or create lifecycle post. Channel-mode posts at channel root.
         if (session.lifecyclePostId) {
           await session.platform.updatePost(session.lifecyclePostId, pauseMessage);
         } else {
-          const post = await session.platform.createPost(pauseMessage, session.threadId);
+          const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+          const post = await session.platform.createPost(pauseMessage, replyTo);
           session.lifecyclePostId = post.id;
         }
 
@@ -1519,8 +1520,9 @@ export class SessionManager extends EventEmitter {
           // Update existing timeout/warning post
           await session.platform.updatePost(session.lifecyclePostId, shutdownMessage);
         } else {
-          // Create new shutdown post and store the ID
-          const post = await session.platform.createPost(shutdownMessage, session.threadId);
+          // Create new shutdown post and store the ID. Channel-mode posts at channel root.
+          const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+          const post = await session.platform.createPost(shutdownMessage, replyTo);
           session.lifecyclePostId = post.id;
         }
         // Persist so resume can find the post ID
@@ -1708,10 +1710,12 @@ export class SessionManager extends EventEmitter {
           `React: 👍 to update now | 👎 to defer for 1 hour\n` +
           fmt.formatItalic('Update will proceed automatically after timeout if no response');
 
+        // Channel-mode posts at channel root, not as thread replies.
+        const replyTo = session.mode === 'channel' ? undefined : session.threadId;
         const post = await session.platform.createInteractivePost(
           message,
           ['👍', '👎'],
-          session.threadId
+          replyTo
         );
 
         // Store pending update prompt for reaction handling

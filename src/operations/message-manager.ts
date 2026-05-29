@@ -1103,8 +1103,11 @@ export class MessageManager {
     // Send to Claude
     this.session.claude.sendMessage(content);
 
-    // Post feedback for skipped files
-    await postSkippedFilesFeedback(this.platform, this.threadId, skippedFiles);
+    // Post feedback for skipped files. Channel-mode sessions get `undefined`
+    // here so the feedback lands at channel root rather than orphaning in a
+    // non-existent thread.
+    const skippedReplyTo = this.session.mode === 'channel' ? undefined : this.threadId;
+    await postSkippedFilesFeedback(this.platform, skippedReplyTo, skippedFiles);
 
     // Update activity time
     this.session.lastActivityAt = new Date();

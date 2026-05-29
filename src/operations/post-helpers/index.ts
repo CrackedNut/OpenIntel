@@ -189,7 +189,11 @@ export async function postInteractive(
   message: string,
   reactions: string[]
 ): Promise<PlatformPost> {
-  const post = await session.platform.createInteractivePost(message, reactions, session.threadId);
+  // Channel-mode sessions post at channel root, not as thread replies — same
+  // gate as `createPostAndTrack`. Without this, prompts (permission requests,
+  // plan approvals, etc.) get orphaned in a non-existent thread.
+  const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+  const post = await session.platform.createInteractivePost(message, reactions, replyTo);
   updateLastMessage(session, post);
   return post;
 }

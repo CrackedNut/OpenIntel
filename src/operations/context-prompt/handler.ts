@@ -203,10 +203,12 @@ export async function postContextPrompt(
     `React to include previous messages, or continue without context.\n\n` +
     optionsText;
 
+  // Channel-mode sessions post at channel root, not as thread replies.
+  const replyTo = session.mode === 'channel' ? undefined : session.threadId;
   const post = await session.platform.createInteractivePost(
     message,
     reactionOptions,
-    session.threadId
+    replyTo
   );
 
   // Register for reaction routing

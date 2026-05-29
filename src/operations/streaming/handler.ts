@@ -226,10 +226,13 @@ export async function buildMessageContent(
 /**
  * Post a skipped-files warning to the thread, if any.
  * No-op when skipped is empty, so callers can invoke unconditionally.
+ *
+ * `threadId` is the parent post ID for thread-mode sessions, or `undefined`
+ * for channel-mode sessions (post lands at channel root).
  */
 export async function postSkippedFilesFeedback(
   platform: PlatformClient,
-  threadId: string,
+  threadId: string | undefined,
   skipped: SkippedFile[],
 ): Promise<void> {
   if (skipped.length === 0) return;
