@@ -807,8 +807,15 @@ export async function startSession(
 ): Promise<void> {
   const threadId = replyToPostId || '';
 
-  // Check if session already exists for this thread
-  const existingSessionId = ctx.ops.getSessionId(platformId, threadId);
+  // Channel-mode identity: when the triggering @mention landed at the
+  // channel root, the session is SHARED across the channel — keyed by
+  // `platformId:channelId` instead of `platformId:threadId`. All allowed
+  // users in the channel participate in the same conversation. The message
+  // handler stashes the channelId in `initialOptions.channelMode`; we use
+  // it as the second segment of the composite key here.
+  const channelMode = initialOptions?.channelMode;
+  const keySegment = channelMode?.channelId ?? threadId;
+  const existingSessionId = ctx.ops.getSessionId(platformId, keySegment);
   const existingSession = mutableSessions(ctx).get(existingSessionId);
   if (existingSession && existingSession.claude.isRunning()) {
     // Send as follow-up instead
@@ -885,7 +892,7 @@ export async function startSession(
     }
   }
   const actualThreadId = replyToPostId || (startPost ? startPost.id : '');
-  const sessionId = ctx.ops.getSessionId(platformId, actualThreadId);
+  const sessionId = ctx.ops.getSessionId(platformId, channelMode?.channelId ?? actualThreadId);
 
   // Start typing indicator early so user sees activity during session setup
   // We'll set up a proper interval-based typing indicator once the session is created
@@ -1024,6 +1031,12 @@ export async function startSession(
     platform,
     claudeSessionId,
     claudeAccountId: claudeAccount?.id,
+    // Channel-mode identity: when present, the bot replies at the channel
+    // root and the session is shared across every allowed user in the
+    // channel. Thread-mode sessions leave these undefined to preserve the
+    // back-compat shape of `Session` and `PersistedSession`.
+    mode: channelMode ? 'channel' : undefined,
+    channelId: channelMode?.channelId,
     startedBy: username,
     startedByDisplayName: displayName,
     startedAt: new Date(),
@@ -1337,6 +1350,12 @@ export async function resumeSession(
     // the next `result` event after Claude finishes its current turn (or by
     // the explicit follow-up if the resumed session is idle).
     queuedUserMessages: state.queuedUserMessages ? [...state.queuedUserMessages] : undefined,
+    // Channel-mode identity. Missing in old persisted records → thread-mode
+    // behavior preserved exactly. Channel-mode sessions are shared across
+    // all allowed users in the channel; the persisted `channelId` is what
+    // the registry's `findByChannelId` lookup matches against on resume.
+    mode: state.mode,
+    channelId: state.channelId,
     // Thread logger for persisting events to disk (appends to existing log)
     threadLogger: createThreadLogger(platformId, state.threadId, state.claudeSessionId, {
       enabled: ctx.config.threadLogsEnabled ?? true,

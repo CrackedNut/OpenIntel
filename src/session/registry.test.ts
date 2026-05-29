@@ -646,4 +646,63 @@ describe('SessionRegistry', () => {
       expect(postIndex.get('post-1')).toBe('thread-1');
     });
   });
+
+  describe('findByChannelId (shared channel mode)', () => {
+    it('matches the shared channel-mode session by (platformId, channelId)', () => {
+      const sessionA = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1',
+        mode: 'channel',
+        channelId: 'channel-1',
+      });
+      registry.register(sessionA);
+
+      expect(registry.findByChannelId('mm', 'channel-1')?.sessionId).toBe('mm:channel-1');
+    });
+
+    it('returns undefined when no channel-mode session matches', () => {
+      const session = createMockSession({
+        platformId: 'mm',
+        mode: 'channel',
+        channelId: 'channel-1',
+      });
+      registry.register(session);
+
+      expect(registry.findByChannelId('mm', 'channel-2')).toBeUndefined();
+      expect(registry.findByChannelId('slack', 'channel-1')).toBeUndefined();
+    });
+
+    it('does not match thread-mode sessions even when the IDs align', () => {
+      // A thread-mode session whose threadId happens to equal a channelId
+      // must not be reachable via findByChannelId — channel-mode lookups
+      // are mode-scoped to prevent cross-mode collisions.
+      const threadSession = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1',
+        channelId: 'channel-1',
+        // mode is undefined → thread mode by default
+      });
+      registry.register(threadSession);
+
+      expect(registry.findByChannelId('mm', 'channel-1')).toBeUndefined();
+    });
+
+    it('returns the same shared session regardless of speaker (multi-user collab)', () => {
+      const shared = createMockSession({
+        platformId: 'mm',
+        threadId: 'channel-1',
+        sessionId: 'mm:channel-1',
+        mode: 'channel',
+        channelId: 'channel-1',
+      });
+      registry.register(shared);
+
+      // No matter who's posting in the channel, the lookup resolves to the
+      // same shared session — Alice and Bob are talking to the same Claude.
+      expect(registry.findByChannelId('mm', 'channel-1')?.sessionId).toBe('mm:channel-1');
+      expect(registry.findByChannelId('mm', 'channel-1')?.sessionId).toBe('mm:channel-1');
+    });
+  });
 });

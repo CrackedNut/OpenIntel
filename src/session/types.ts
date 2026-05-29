@@ -4,7 +4,7 @@
 
 import type { ClaudeCli } from '../claude/cli.js';
 import type { PlatformClient, PlatformFile } from '../platform/index.js';
-import type { OverheadVisibility, PermissionMode } from '../config/index.js';
+import type { OverheadVisibility, PermissionMode, PlatformMode } from '../config/index.js';
 import type { WorktreeInfo } from '../persistence/session-store.js';
 import type { SessionInfo } from '../ui/types.js';
 import type { RecentEvent, ErrorContext } from '../operations/bug-report/index.js';
@@ -44,6 +44,17 @@ export interface InitialSessionOptions {
   forceInteractivePermissions?: boolean;
   /** Switch to existing worktree instead of creating new (from !worktree switch) */
   switchToExisting?: boolean;
+  /**
+   * Channel-mode session identity. Set by the message handler when the
+   * triggering @mention landed at the channel root (no `post.rootId`).
+   * When present, the new session is a SHARED channel session keyed by
+   * `(platformId, channelId)` — every allowed user in the channel
+   * participates in the same conversation, and the bot replies as channel
+   * root posts (not thread replies).
+   */
+  channelMode?: {
+    channelId: string;
+  };
 }
 
 // =============================================================================
@@ -250,11 +261,28 @@ export function markClaudeResponded(session: Session): void {
 export interface Session {
   // Identity
   platformId: string;       // Which platform instance (e.g., 'mattermost-main')
-  threadId: string;         // Thread ID within that platform
-  sessionId: string;        // Composite key "platformId:threadId"
+  threadId: string;         // Thread mode: the thread ID. Channel mode: the channel ID.
+  sessionId: string;        // Composite key — see `mode` below for the shape.
   claudeSessionId: string;  // UUID for --session-id / --resume
   startedBy: string;            // Username (for permissions)
   startedByDisplayName?: string; // Display name (for UI)
+  /**
+   * Session reply model, decided at session start time from where the
+   * triggering @mention landed (NOT from any config field):
+   * - `'thread'` (default / undefined): @mention was a thread reply.
+   *   `sessionId = "platformId:threadId"`; bot replies as thread replies.
+   * - `'channel'`: @mention was at the channel root. `sessionId =
+   *   "platformId:channelId"`; bot replies as channel root posts; session
+   *   is SHARED across every allowed user in the channel.
+   * Optional + back-compat: missing/undefined → thread mode.
+   */
+  mode?: PlatformMode;
+  /**
+   * Channel ID the session lives in. Set in both modes for convenience.
+   * Load-bearing in channel mode where it forms the session key's second
+   * segment (`platformId:channelId`).
+   */
+  channelId?: string;
   startedAt: Date;
   lastActivityAt: Date;
   sessionNumber: number;  // Session # when created

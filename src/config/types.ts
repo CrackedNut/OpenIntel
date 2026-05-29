@@ -236,6 +236,27 @@ export interface Config {
   platforms: PlatformInstanceConfig[];
 }
 
+/**
+ * Per-session reply model. Decided AT SESSION START TIME from where the
+ * triggering @mention landed, NOT from any config field:
+ *
+ * - `'thread'`: the @mention was a reply inside an existing thread (Mattermost
+ *   thread reply / Slack threaded reply). Session is keyed by
+ *   `platformId:threadId` and the bot continues replying in that thread.
+ *   This is the historical behavior.
+ * - `'channel'`: the @mention was a root-level message in the channel (no
+ *   parent thread). Session is keyed by `platformId:channelId` and is
+ *   SHARED by every allowed user in that channel — Alice and Bob talking
+ *   in the same channel are in the same session, and the bot's replies are
+ *   channel root posts. Claude sees `@alice:` / `@bob:` attribution
+ *   prefixes on inbound messages so it can disambiguate speakers.
+ *
+ * The same channel can host both modes concurrently: one shared channel
+ * session AND any number of threaded sessions inside threads in that
+ * channel. There is no global / per-platform mode toggle.
+ */
+export type PlatformMode = 'thread' | 'channel';
+
 export interface PlatformInstanceConfig {
   id: string;
   type: 'mattermost' | 'slack';

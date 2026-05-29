@@ -1062,12 +1062,32 @@ export class MessageManager {
     // Prepare for the new message (flush, reset, bump tasks)
     await this.prepareForUserMessage();
 
+    // Decide whether to prefix the message with `@username: ` so Claude can
+    // disambiguate speakers in multi-user sessions. Two cases:
+    //   - Channel-mode sessions: always prefix (the session is shared across
+    //     the whole channel, every speaker is a participant).
+    //   - Thread-mode sessions: prefix only when the speaker is not the
+    //     session owner. The owner's messages stay clean (matches the
+    //     historical solo-session UX).
+    // The prefix is plain markdown so Mattermost/Slack render it as the
+    // user's handle even when echoed.
+    const effectiveUser = username || this.session.startedBy;
+    const isChannelMode = this.session.mode === 'channel';
+    const isOwner = effectiveUser === this.session.startedBy;
+    const attributedMessage =
+      isChannelMode || !isOwner
+        ? `@${effectiveUser}: ${message}`
+        : message;
+
     // Build message content (with files if provided). buildMessageContent processes
     // files once and returns both content and any files it had to skip.
-    let content: string = message;
+    let content: string = attributedMessage;
     let skippedFiles: SkippedFile[] = [];
     if (this.buildMessageContentCallback) {
-      const built = await this.buildMessageContentCallback(message, this.platform, files);
+      // Pass the attributed text — buildMessageContent treats it as the
+      // user's literal message body, so any attribution must already be
+      // applied when we hand it off.
+      const built = await this.buildMessageContentCallback(attributedMessage, this.platform, files);
       content = built.content;
       skippedFiles = built.skipped;
     }

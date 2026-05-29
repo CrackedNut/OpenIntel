@@ -23,6 +23,7 @@ export type {
   PermissionMode,
   OverheadVisibility,
   PlatformOverhead,
+  PlatformMode,
 } from './types.js';
 export {
   LIMITS_DEFAULTS,

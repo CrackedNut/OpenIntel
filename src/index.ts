@@ -621,7 +621,10 @@ async function startWithoutDaemon() {
     const client = createPlatformClient(platformConfig);
     platforms.set(platformConfig.id, client);
 
-    // Register with session manager (passes per-platform overhead visibility)
+    // Register with session manager (passes per-platform overhead visibility).
+    // Session model (thread vs. channel) is decided per-session from where
+    // the triggering @mention lands — not from any config field. See
+    // `PlatformMode` in `src/config/types.ts`.
     session.addPlatform(platformConfig.id, client, {
       sessionHeader: resolveOverheadVisibility(
         platformConfig.sessionHeader,

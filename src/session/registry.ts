@@ -86,6 +86,28 @@ export class SessionRegistry {
   }
 
   /**
+   * Find the shared channel-mode session for (platformId, channelId).
+   *
+   * Channel-mode sessions are SHARED across all allowed users in a channel —
+   * there's at most one per (platform, channel). Thread-mode sessions whose
+   * `channelId` happens to align are NOT reachable through this lookup,
+   * keeping the two modes hermetic so a thread root ID that collides with a
+   * channel ID can't accidentally cross-match.
+   */
+  findByChannelId(platformId: string, channelId: string): Session | undefined {
+    for (const session of this.sessions.values()) {
+      if (
+        session.mode === 'channel' &&
+        session.platformId === platformId &&
+        session.channelId === channelId
+      ) {
+        return session;
+      }
+    }
+    return undefined;
+  }
+
+  /**
    * Get session by composite session ID.
    */
   get(sessionId: string): Session | undefined {

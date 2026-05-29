@@ -185,7 +185,7 @@ export class SessionManager extends EventEmitter {
   addPlatform(
     platformId: string,
     client: PlatformClient,
-    overhead?: Partial<PlatformOverhead>
+    overhead?: Partial<PlatformOverhead>,
   ): void {
     this.platforms.set(platformId, client);
     this.platformOverhead.set(platformId, {
@@ -386,8 +386,19 @@ export class SessionManager extends EventEmitter {
   // Session ID and Post Index
   // ---------------------------------------------------------------------------
 
-  private getSessionId(platformId: string, threadId: string): string {
-    return `${platformId}:${threadId}`;
+  /**
+   * Compute the composite session key.
+   *
+   * Both modes use a two-part key — the second segment is either the thread
+   * root ID (thread mode) or the channel ID (channel mode). Channel-mode
+   * sessions are SHARED across all allowed users in the channel, so no user
+   * dimension is needed in the key. Disambiguation between thread- and
+   * channel-mode sessions in the same channel comes from the message
+   * handler reading `post.rootId` per inbound message; it never collides
+   * because a thread root ID is never equal to its parent channel ID.
+   */
+  private getSessionId(platformId: string, idSegment: string): string {
+    return `${platformId}:${idSegment}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -665,6 +676,8 @@ export class SessionManager extends EventEmitter {
       claudeAccountId: session.claudeAccountId,
       sessionHeaderMode: session.sessionHeaderMode,
       queuedUserMessages: session.queuedUserMessages,
+      mode: session.mode,
+      channelId: session.channelId,
     };
     this.sessionStore.save(session.sessionId, state);
   }
@@ -991,6 +1004,16 @@ export class SessionManager extends EventEmitter {
       }
     }
     return undefined;
+  }
+
+  /**
+   * Public lookup for the shared channel-mode session in `(platformId,
+   * channelId)`. Used by `message-handler.ts` when an inbound post lands at
+   * the channel root (no `rootId`) to route it into the existing shared
+   * session if any.
+   */
+  findChannelSession(platformId: string, channelId: string): Session | undefined {
+    return this.registry.findByChannelId(platformId, channelId);
   }
 
 

@@ -599,6 +599,46 @@ describe('MessageManager', () => {
       // Should have created 2 posts
       expect(platform.createPost).toHaveBeenCalledTimes(2);
     });
+
+    it('does NOT prefix the owner\'s message in thread mode (solo session UX)', async () => {
+      const send = session.claude.sendMessage as ReturnType<typeof mock>;
+      send.mockClear();
+
+      await manager.handleUserMessage('plain owner message', undefined, 'testuser');
+
+      expect(send).toHaveBeenCalled();
+      const sent = send.mock.calls[0][0] as string;
+      // Owner is 'testuser' per the mock session; thread-mode owner message
+      // stays clean to preserve historical solo-session feel.
+      expect(sent).toBe('plain owner message');
+      expect(sent).not.toMatch(/^@testuser:/);
+    });
+
+    it('prefixes a non-owner message in thread mode (so Claude knows who joined)', async () => {
+      const send = session.claude.sendMessage as ReturnType<typeof mock>;
+      send.mockClear();
+
+      await manager.handleUserMessage('hello from someone else', undefined, 'bob');
+
+      const sent = send.mock.calls[0][0] as string;
+      expect(sent).toBe('@bob: hello from someone else');
+    });
+
+    it('prefixes every message in channel mode, including the owner\'s', async () => {
+      // Channel-mode sessions are shared across the channel — Claude needs
+      // attribution on every speaker, including the session starter, so it
+      // can disambiguate in a multi-user back-and-forth.
+      session.mode = 'channel';
+      session.channelId = 'c-1';
+      const send = session.claude.sendMessage as ReturnType<typeof mock>;
+      send.mockClear();
+
+      await manager.handleUserMessage('msg from owner', undefined, 'testuser');
+      expect((send.mock.calls[0][0] as string)).toBe('@testuser: msg from owner');
+
+      await manager.handleUserMessage('msg from alice', undefined, 'alice');
+      expect((send.mock.calls[1][0] as string)).toBe('@alice: msg from alice');
+    });
   });
 
   describe('restoreTaskListFromPersistence', () => {

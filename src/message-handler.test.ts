@@ -48,6 +48,7 @@ function createMockSessionManager() {
     // Note: isInSessionThread and hasPausedSession removed - code uses registry directly
     isUserAllowedInSession: mock(() => true),
     getActiveThreadIds: mockGetActiveThreadIds,
+    findChannelSession: mock(() => undefined),
     registry: {
       getActiveThreadIds: mockGetActiveThreadIds,
       findByThreadId: mockFindByThreadId,
@@ -1688,6 +1689,132 @@ describe('handleMessage', () => {
 
       expect(session.handleWorktreeBranchResponse).not.toHaveBeenCalled();
       expect(session.requestMessageApproval).toHaveBeenCalled();
+    });
+  });
+
+  describe('channel mode (auto-detected per message)', () => {
+    test('routes channel-root post (no rootId) to findChannelSession', async () => {
+      const matchingSession = { sessionId: 'mm:c-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => matchingSession);
+
+      const post: PlatformPost = {
+        id: 'p-99',
+        rootId: '', // channel root → channel mode
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: 'follow up message',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'alice', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.findChannelSession).toHaveBeenCalledWith('test-platform', 'c-1');
+      // Thread-mode lookup must NOT be used for a channel-root post.
+      expect(session.registry.findByThreadId).not.toHaveBeenCalled();
+    });
+
+    test('thread post (rootId set) still routes by threadId, even from same channel', async () => {
+      const matchingSession = { sessionId: 'mm:thread-xyz' } as any;
+      (session.registry.findByThreadId as any).mockImplementation(() => matchingSession);
+
+      const post: PlatformPost = {
+        id: 'p-99',
+        rootId: 'thread-xyz', // it's a thread reply
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: 'inside thread',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'alice', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      // Thread routing kicks in because rootId is set.
+      expect(session.registry.findByThreadId).toHaveBeenCalledWith('thread-xyz');
+      // Channel lookup must NOT be used for a thread-mode post.
+      expect(session.findChannelSession).not.toHaveBeenCalled();
+    });
+
+    test('passes channelMode in initialOptions when starting a new session at channel root', async () => {
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => 'hello');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-100',
+        rootId: '', // channel root → channel mode
+        channelId: 'c-7',
+        userId: 'u-9',
+        message: '@bot hello',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      // startSession(options, username, threadRoot, platformId, displayName, triggeringPostId, initialOptions)
+      const initialOptions = startArgs[6];
+      expect(initialOptions.channelMode).toEqual({ channelId: 'c-7' });
+    });
+
+    test('does NOT pass channelMode when @mention is a thread reply (preserves thread mode)', async () => {
+      (session.registry.findByThreadId as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => 'hello');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+
+      const post: PlatformPost = {
+        id: 'p-100',
+        rootId: 'thread-xyz', // thread reply
+        channelId: 'c-7',
+        userId: 'u-9',
+        message: '@bot hello',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      const initialOptions = startArgs[6];
+      expect(initialOptions.channelMode).toBeUndefined();
+    });
+
+    test('direct error posts go to channel root (no thread reply) for channel-root posts', async () => {
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+
+      const post: PlatformPost = {
+        id: 'p-101',
+        rootId: '', // channel root
+        channelId: 'c-7',
+        userId: 'u-9',
+        message: '@bot',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
+
+      await handleMessage(client, session, post, user, options);
+
+      const createPostCalls = (client.createPost as any).mock.calls;
+      const errorCall = createPostCalls.find(([msg]: [string]) => msg.includes('Mention me'));
+      expect(errorCall).toBeDefined();
+      expect(errorCall[1]).toBeUndefined();
     });
   });
 });

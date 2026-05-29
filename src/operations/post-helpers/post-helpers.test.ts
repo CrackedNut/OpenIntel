@@ -196,6 +196,30 @@ describe('post() factory function', () => {
 
     expect(session.lastMessageId).toBe('post-123');
   });
+
+  it('posts at channel root (undefined threadId) when session.mode === "channel"', async () => {
+    const session = createMockSession();
+    session.mode = 'channel';
+    session.channelId = 'channel-9';
+    await post(session, 'info', 'channel-mode reply');
+
+    // Channel-mode sessions reply at the channel root, so we pass undefined
+    // as the second arg — Mattermost/Slack clients then omit root_id / thread_ts.
+    expect(session.platform.createPost).toHaveBeenCalledWith(
+      'channel-mode reply',
+      undefined,
+    );
+  });
+
+  it('still posts as thread reply in thread mode (default / undefined mode)', async () => {
+    const session = createMockSession();
+    // Default: session.mode is undefined → thread-mode behavior preserved.
+    await post(session, 'info', 'thread-mode reply');
+    expect(session.platform.createPost).toHaveBeenCalledWith(
+      'thread-mode reply',
+      'thread-123',
+    );
+  });
 });
 
 describe('formatBold', () => {
