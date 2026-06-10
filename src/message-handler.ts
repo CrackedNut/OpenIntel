@@ -19,6 +19,7 @@ import {
 import type { InitialSessionOptions } from './session/types.js';
 import { logSilentError } from './utils/error-handler/index.js';
 import { buildChannelHistoryContext } from './operations/channel-history.js';
+import { ACK_SEEN_EMOJI } from './utils/emoji.js';
 
 /**
  * Logger interface for message handler
@@ -221,7 +222,13 @@ export async function handleMessage(
       // Get any attached files (images)
       const files = post.metadata?.files;
 
-      if (content || files?.length) await session.sendFollowUp(threadRoot, content, files, username, user?.displayName);
+      if (content || files?.length) {
+        // Ack: 👀 = seen/working; swapped to ✅ by the result-event handler.
+        void client.addReaction?.(post.id, ACK_SEEN_EMOJI).catch((err) => logSilentError('ack-reaction', err));
+        const ackSession = activeSession as { pendingAckPostIds?: string[] };
+        ackSession.pendingAckPostIds = [...(ackSession.pendingAckPostIds ?? []), post.id];
+        await session.sendFollowUp(threadRoot, content, files, username, user?.displayName);
+      }
       return;
     }
 
@@ -278,6 +285,7 @@ export async function handleMessage(
       const files = post.metadata?.files;
 
       if (content || files?.length) {
+        void client.addReaction?.(post.id, ACK_SEEN_EMOJI).catch((err) => logSilentError('ack-reaction', err));
         await session.resumePausedSession(threadRoot, content, files, username);
       }
       return;
@@ -421,6 +429,11 @@ export async function handleMessage(
       await client.createPost(`Mention me with your request`, directReplyTo);
       return;
     }
+
+    // Ack the @mention that starts the session: 👀 = seen/working. The
+    // lifecycle seeds pendingAckPostIds from triggeringPostId so the
+    // result-event handler swaps this to ✅ when the first turn completes.
+    void client.addReaction?.(post.id, ACK_SEEN_EMOJI).catch((err) => logSilentError('ack-reaction', err));
 
     // Start session with worktree if branch specified
     if (worktreeBranch) {

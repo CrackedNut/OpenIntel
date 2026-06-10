@@ -420,6 +420,10 @@ export interface Session {
   recentEvents: RecentEvent[];            // Circular buffer of recent events (max 10)
   lastError?: ErrorContext;               // Most recent error for bug reaction
 
+  // Ack reactions: user posts that got 👀 when accepted; swapped to ✅ when
+  // the turn they triggered completes. Transient — not persisted.
+  pendingAckPostIds?: string[];
+
   // Thread logging
   threadLogger?: ThreadLogger;            // Logger for persisting events to disk
 

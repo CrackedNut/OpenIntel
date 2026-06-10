@@ -1889,6 +1889,30 @@ describe('handleMessage', () => {
       expect(startArgs[0].prompt).toBe('do work');
     });
 
+    test('accepted follow-up gets a 👀 ack reaction and is queued for ✅ on completion', async () => {
+      const channelSession = { sessionId: 'mm:c-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => channelSession);
+      const addReaction = mock(async () => {});
+      (client as any).addReaction = addReaction;
+
+      const post: PlatformPost = {
+        id: 'p-msg',
+        rootId: '',
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: 'please do the thing',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(addReaction).toHaveBeenCalledWith('p-msg', 'eyes');
+      expect(channelSession.pendingAckPostIds).toEqual(['p-msg']);
+      expect(session.sendFollowUp).toHaveBeenCalled();
+    });
+
     test('in-session command reply at channel root targets channel root, not channelId (Invalid RootId regression)', async () => {
       // Active channel-mode session: bare commands route down the in-session
       // path where ctx.threadId carries the channelId. The reply target must

@@ -27,7 +27,7 @@ import { validateClaudeCli } from './claude/version-check.js';
 import { startUI, type UIProvider } from './ui/index.js';
 import { setLogHandler } from './utils/logger.js';
 import { handleMessage } from './message-handler.js';
-import { AutoUpdateManager } from './auto-update/index.js';
+import { AutoUpdateManager, RESTART_EXIT_CODE } from './auto-update/index.js';
 import {
   loadUpdateState,
   saveRuntimeSettings,
@@ -676,6 +676,39 @@ async function startWithoutDaemon() {
   // Shutdown flag - shared between shutdown() and prepareForRestart callback
   let isShuttingDown = false;
 
+  // Persist sessions and disconnect cleanly before a supervisor restart.
+  // Shared by the auto-update manager and the web panel's restart button.
+  const prepareForRestart = async () => {
+    // Reuse shutdown logic to persist sessions before update restart
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    ui.setShuttingDown();
+    session.setShuttingDown();
+    await session.updateAllStickyMessages();
+    await session.killAllSessions();
+    autoUpdateManager?.stop();
+
+    // Await disconnects so the new bot process can re-establish
+    // websockets without racing the old process. Self-respawn (added
+    // for !update on TTY-without-supervisor) tightens this timing
+    // because the new child starts within tens of milliseconds of
+    // the old process exiting.
+    await Promise.all(
+      Array.from(platforms.values()).map((client) =>
+        client.disconnect().catch((err) => {
+          ui.addLog({ level: 'warn', component: 'shutdown', message: `disconnect failed: ${err}` });
+        })
+      )
+    );
+
+    // Clear screen and restore cursor before daemon restarts us (only in interactive mode)
+    if (!isHeadless) {
+      process.stdout.write('\x1b[2J\x1b[H');  // Clear screen, cursor to home
+      process.stdout.write('\x1b[?25h');       // Restore cursor visibility
+    }
+  };
+
   // Initialize auto-update manager
   autoUpdateManager = new AutoUpdateManager(config.autoUpdate, {
     getSessionActivity: () => session.getActivityInfo(),
@@ -683,40 +716,48 @@ async function startWithoutDaemon() {
     broadcastUpdate: (msg) => session.broadcastToAll(msg),
     postAskMessage: (ids, ver) => session.postUpdateAskMessage(ids, ver),
     refreshUI: () => session.updateAllStickyMessages(),
-    prepareForRestart: async () => {
-      // Reuse shutdown logic to persist sessions before update restart
-      if (isShuttingDown) return;
-      isShuttingDown = true;
-
-      ui.setShuttingDown();
-      session.setShuttingDown();
-      await session.updateAllStickyMessages();
-      await session.killAllSessions();
-      autoUpdateManager?.stop();
-
-      // Await disconnects so the new bot process can re-establish
-      // websockets without racing the old process. Self-respawn (added
-      // for !update on TTY-without-supervisor) tightens this timing
-      // because the new child starts within tens of milliseconds of
-      // the old process exiting.
-      await Promise.all(
-        Array.from(platforms.values()).map((client) =>
-          client.disconnect().catch((err) => {
-            ui.addLog({ level: 'warn', component: 'shutdown', message: `disconnect failed: ${err}` });
-          })
-        )
-      );
-
-      // Clear screen and restore cursor before daemon restarts us (only in interactive mode)
-      if (!isHeadless) {
-        process.stdout.write('\x1b[2J\x1b[H');  // Clear screen, cursor to home
-        process.stdout.write('\x1b[?25h');       // Restore cursor visibility
-      }
-    },
+    prepareForRestart,
   });
 
   // Connect auto-update manager to session manager for !update commands
   session.setAutoUpdateManager(autoUpdateManager);
+
+  // Start the local web dashboard (127.0.0.1 only) unless disabled in config.
+  if (config.panel?.enabled !== false) {
+    try {
+      const { startPanelServer } = await import('./panel/server.js');
+      startPanelServer({
+        port: config.panel?.port,
+        status: {
+          version: VERSION,
+          getPlatforms: () =>
+            Array.from(platforms.entries()).map(([id, client]) => ({
+              id,
+              type: client.platformType,
+              displayName: client.displayName,
+              connected: platformEnabledState.get(id) ?? true,
+            })),
+          getSessions: () =>
+            session.registry.getAll().map((s) => ({
+              sessionId: s.sessionId,
+              platformId: s.platformId,
+              mode: s.mode ?? 'thread',
+              title: s.sessionTitle,
+              startedBy: s.startedBy,
+              startedAt: s.startedAt.toISOString(),
+              isProcessing: s.isProcessing,
+            })),
+        },
+        requestRestart: async () => {
+          await prepareForRestart();
+          process.exit(RESTART_EXIT_CODE);
+        },
+        log: (level, message) => ui.addLog({ level, component: 'panel', message }),
+      });
+    } catch (err) {
+      ui.addLog({ level: 'warn', component: 'panel', message: `dashboard failed to start: ${err}` });
+    }
+  }
 
   // Wire up auto-update events to UI
   autoUpdateManager.on('update:available', (info) => {

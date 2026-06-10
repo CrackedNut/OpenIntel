@@ -22,6 +22,7 @@ import { changeDirectory, reportBug } from '../commands/index.js';
 import { buildWorktreeListMessage } from '../worktree/index.js';
 import { trackEvent } from '../bug-report/index.js';
 import { parseClaudeCommand, removeCommandFromText, isClaudeAllowedCommand } from '../../commands/index.js';
+import { ACK_SEEN_EMOJI, ACK_DONE_EMOJI } from '../../utils/emoji.js';
 
 const log = createLogger('events');
 const sessionLog = createSessionLog(log);
@@ -239,6 +240,16 @@ export function handleEventPostProcessing(
   if (event.type === 'result') {
     ctx.ops.stopTyping(session);
     session.isProcessing = false;
+    // Swap ack reactions on the user posts that drove this turn: 👀 → ✅.
+    // Fire-and-forget; a failed reaction must never block the result pipeline.
+    const ackPostIds = session.pendingAckPostIds;
+    if (ackPostIds?.length) {
+      session.pendingAckPostIds = [];
+      for (const ackPostId of ackPostIds) {
+        void session.platform.removeReaction(ackPostId, ACK_SEEN_EMOJI).catch(() => {});
+        void session.platform.addReaction(ackPostId, ACK_DONE_EMOJI).catch(() => {});
+      }
+    }
     ctx.ops.emitSessionUpdate(session.sessionId, { status: getSessionStatus(session) });
     updateUsageStats(session, event, ctx);
     // Deliver any messages that were buffered via `!queue` / `!steer` while

@@ -233,6 +233,8 @@ export interface Config {
   agentPersona?: AgentPersonaConfig;
   /** Optional skills-index prepend — lists `~/.claude/skills/*` by name+description. */
   skillsIndex?: SkillsIndexConfig;
+  /** Local web dashboard (binds 127.0.0.1 only). Default: enabled on port 7777. */
+  panel?: { enabled?: boolean; port?: number };
   platforms: PlatformInstanceConfig[];
 }
 

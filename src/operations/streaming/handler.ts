@@ -264,9 +264,13 @@ export function formatSkippedFilesFeedback(skippedFiles: SkippedFile[]): string 
  */
 export function startTyping(session: Session): void {
   if (session.timers.typingTimer) return;
-  session.platform.sendTyping(session.threadId);
+  // Channel-mode: threadId carries the channelId, which is not a valid
+  // parent post id — send channel-level typing (no parent) instead, same
+  // rule as the post-helpers' reply target.
+  const typingParent = session.mode === 'channel' ? undefined : session.threadId;
+  session.platform.sendTyping(typingParent);
   session.timers.typingTimer = setInterval(() => {
-    session.platform.sendTyping(session.threadId);
+    session.platform.sendTyping(typingParent);
   }, 3000);
 }
 

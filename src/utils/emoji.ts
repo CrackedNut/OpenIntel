@@ -34,6 +34,12 @@ export const MINIMIZE_TOGGLE_EMOJIS = ['arrow_down_small', 'small_red_triangle_d
 /** Bug report emoji for quick error reporting */
 export const BUG_REPORT_EMOJI = 'bug' as const;
 
+/** Acknowledgement reaction: bot saw the message and is working on it */
+export const ACK_SEEN_EMOJI = 'eyes' as const;
+
+/** Acknowledgement reaction: the turn this message triggered has completed */
+export const ACK_DONE_EMOJI = 'white_check_mark' as const;
+
 /**
  * Check if the emoji indicates approval (thumbs up)
  */

@@ -900,8 +900,10 @@ export async function startSession(
   const sessionId = ctx.ops.getSessionId(platformId, channelMode?.channelId ?? actualThreadId);
 
   // Start typing indicator early so user sees activity during session setup
-  // We'll set up a proper interval-based typing indicator once the session is created
-  platform.sendTyping(actualThreadId);
+  // We'll set up a proper interval-based typing indicator once the session is
+  // created. Channel-mode: actualThreadId carries the channelId, which is not
+  // a valid parent post id — send channel-level typing instead.
+  platform.sendTyping(channelMode ? undefined : actualThreadId);
 
   // Generate a unique session ID for this Claude session
   const claudeSessionId = randomUUID();
@@ -1071,6 +1073,9 @@ export async function startSession(
     messageCount: 0,  // Will be incremented when first message is sent
     isProcessing: true,  // Starts as true since we're sending initial prompt
     recentEvents: [],  // Bug report context: recent tool uses/errors
+    // The @mention that started the session got 👀 in the message handler;
+    // the result-event handler swaps it to ✅ when the first turn completes.
+    pendingAckPostIds: triggeringPostId ? [triggeringPostId] : [],
     // Thread logger for persisting events to disk
     threadLogger: createThreadLogger(platformId, actualThreadId, claudeSessionId, {
       enabled: ctx.config.threadLogsEnabled ?? true,
