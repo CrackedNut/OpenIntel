@@ -127,6 +127,13 @@ export const PANEL_HTML = `<!doctype html>
   .empty { text-align: center; color: var(--ink-2); padding: 70px 20px; }
   .empty .big { font-family: var(--serif); font-size: 19px; color: var(--ink); margin-bottom: 6px; }
 
+  /* ---------- file chips ---------- */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 12px; }
+  .seg-chip { border: 1px solid var(--line-2); background: var(--card); color: var(--ink-2); border-radius: 99px;
+    padding: 4px 13px; font: 600 12px var(--sans); cursor: pointer; transition: all .12s; }
+  .seg-chip:hover { border-color: var(--ink-2); color: var(--ink); }
+  .seg-chip.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-deep); }
+
   /* ---------- paths ---------- */
   .path-row { padding: 16px 0; border-bottom: 1px solid var(--line); }
   .path-row:last-child { border-bottom: none; }
@@ -158,6 +165,7 @@ export const PANEL_HTML = `<!doctype html>
       <a href="#/persona" data-page="persona"><span class="ico">✦</span>Persona</a>
       <a href="#/projects" data-page="projects"><span class="ico">▤</span>Projects</a>
       <a href="#/skills" data-page="skills"><span class="ico">⚒</span>Skills</a>
+      <a href="#/platforms" data-page="platforms"><span class="ico">⇄</span>Platforms</a>
       <a href="#/config" data-page="config"><span class="ico">⌘</span>Config</a>
       <a href="#/paths" data-page="paths"><span class="ico">⛕</span>Paths</a>
       <a href="#/logs" data-page="logs"><span class="ico">☰</span>Logs</a>
@@ -218,6 +226,48 @@ export const PANEL_HTML = `<!doctype html>
           <div class="foot"><input type="text" id="skills-new" placeholder="category/new-skill"><button class="btn" onclick="createEntry('skills')">New</button></div>
         </div>
         <div class="card detail" id="skills-detail"></div>
+      </div>
+    </section>
+
+    <!-- ============ PLATFORMS ============ -->
+    <section data-page="platforms" hidden>
+      <div class="page-head"><h1>Platforms</h1><p>Connect the agent to Mattermost or Slack — credentials are validated live before saving. No terminal needed.</p></div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="page-head" style="margin-bottom:8px"><h1 style="font-size:17px">Connected</h1></div>
+        <div class="list" id="platform-list"></div>
+      </div>
+      <div class="card">
+        <div class="page-head" style="margin-bottom:12px"><h1 style="font-size:17px">Add a platform</h1></div>
+        <div class="seg">
+          <button id="seg-mattermost" class="active" onclick="setPlatformType('mattermost')">Mattermost</button>
+          <button id="seg-slack" onclick="setPlatformType('slack')">Slack</button>
+        </div>
+        <div id="pf-help-mattermost" class="bar-note" style="margin-bottom:14px;line-height:1.7">
+          Create the bot: System Console → Integrations → Bot Accounts (enable) → Integrations → Bot Accounts → <b>Add Bot Account</b> → copy the token. Then add the bot to your channel and grab the channel ID from View Info.
+        </div>
+        <div id="pf-help-slack" class="bar-note" style="margin-bottom:14px;line-height:1.7;display:none">
+          Create an app at api.slack.com/apps → enable <b>Socket Mode</b> (App-Level Token with connections:write → xapp-…) → OAuth scopes: channels:history, channels:read, chat:write, files:read, reactions:read, reactions:write, users:read → install to workspace (Bot Token xoxb-…) → invite the bot to your channel.
+        </div>
+        <div class="path-row" id="pf-url" style="border:none;padding:8px 0"><div class="lbl">Server URL</div>
+          <input type="text" id="pf-field-url" placeholder="https://chat.example.com"></div>
+        <div class="path-row" id="pf-token" style="border:none;padding:8px 0"><div class="lbl">Bot token</div>
+          <input type="text" id="pf-field-token" placeholder="bot access token"></div>
+        <div class="path-row" id="pf-botToken" style="border:none;padding:8px 0;display:none"><div class="lbl">Bot token (xoxb-…)</div>
+          <input type="text" id="pf-field-botToken" placeholder="xoxb-…"></div>
+        <div class="path-row" id="pf-appToken" style="border:none;padding:8px 0;display:none"><div class="lbl">App token (xapp-…)</div>
+          <input type="text" id="pf-field-appToken" placeholder="xapp-…"></div>
+        <div class="path-row" style="border:none;padding:8px 0"><div class="lbl">Channel ID</div>
+          <input type="text" id="pf-field-channelId" placeholder="the channel the agent lives in"></div>
+        <div class="path-row" style="border:none;padding:8px 0"><div class="lbl">Bot name</div>
+          <input type="text" id="pf-field-botName" placeholder="the bot account's username"></div>
+        <div class="path-row" style="border:none;padding:8px 0"><div class="lbl">Allowed users <span class="bar-note">(comma-separated; empty = everyone in the channel)</span></div>
+          <input type="text" id="pf-field-allowedUsers" placeholder="alice, bob"></div>
+        <div class="path-row" style="border:none;padding:8px 0"><div class="lbl">Display name <span class="bar-note">(optional)</span></div>
+          <input type="text" id="pf-field-displayName" placeholder="My Team"></div>
+        <div class="editor-bar">
+          <button class="btn" id="pf-add" onclick="addPlatform()">Validate &amp; add</button>
+          <span class="bar-note">Credentials are tested against the live API. After adding, hit Restart to connect.</span>
+        </div>
       </div>
     </section>
 
@@ -456,7 +506,28 @@ function renderBrowser(kind) {
   $(kind + '-list').innerHTML = html ||
     '<div class="empty"><div class="big">Nothing here yet</div>Create your first one below.</div>';
 }
-function selectEntry(kind, name) { state.sel[kind] = name; renderBrowser(kind); renderDetail(kind); }
+function selectEntry(kind, name) {
+  state.sel[kind] = name;
+  if (kind === 'projects') state.projFile = null; // reset to default file
+  renderBrowser(kind); renderDetail(kind);
+}
+function selectProjectFile(file) {
+  state.projFile = file;
+  var name = state.sel.projects;
+  fetch('/api/projects/' + encodeURIComponent(name) + '/files/' + encodeURIComponent(file))
+    .then(function (r) { return r.json(); })
+    .then(function (j) { renderDetail('projects'); $('projects-body').value = j.content || ''; });
+}
+function addProjectFile() {
+  var f = ($('projects-newfile').value || '').trim();
+  if (!f) return;
+  if (!/\\.md$/i.test(f)) f += '.md';
+  $('projects-newfile').value = '';
+  var e = state.projects.find(function (x) { return x.name === state.sel.projects; });
+  if (e && e.files.indexOf(f) < 0) e.files.push(f);
+  state.projFile = f;
+  renderDetail('projects');
+}
 function renderDetail(kind) {
   var box = $(kind + '-detail');
   var e = state[kind].find(function (x) { return x.name === state.sel[kind]; });
@@ -464,8 +535,26 @@ function renderDetail(kind) {
     box.innerHTML = '<div class="empty"><div class="big">' + (kind === 'skills' ? 'No skill selected' : 'No project selected') + '</div>Pick one from the list, or create a new one.</div>';
     return;
   }
-  var file = kind === 'skills' ? 'SKILL.md' : 'description.md';
-  box.innerHTML = '<h3>' + esc(e.name) + '</h3><div class="where">' + esc(state[kind + 'Dir']) + '/' + esc(e.name) + '/' + file + '</div>' +
+  if (kind === 'projects') {
+    var files = (e.files && e.files.length) ? e.files : ['description.md'];
+    if (!state.projFile || (files.indexOf(state.projFile) < 0 && state.projFile !== null)) state.projFile = files[0];
+    var cur = state.projFile;
+    var chips = files.map(function (f) {
+      return '<button class="seg-chip' + (f === cur ? ' active' : '') + '" onclick="selectProjectFile(\\'' + esc(f) + '\\')">' + esc(f) + '</button>';
+    }).join('');
+    box.innerHTML = '<h3>' + esc(e.name) + '</h3><div class="where">' + esc(state.projectsDir) + '/' + esc(e.name) + '/' + esc(cur) + '</div>' +
+      '<div class="chips">' + chips +
+      '<input type="text" id="projects-newfile" placeholder="notes.md" style="width:130px;font-family:var(--sans);font-size:12px;padding:5px 10px">' +
+      '<button class="seg-chip" onclick="addProjectFile()">+ file</button></div>' +
+      '<textarea id="projects-body" spellcheck="false"></textarea>' +
+      '<div class="editor-bar"><button class="btn" onclick="saveEntry(\\'projects\\')">Save</button>' +
+      '<button class="btn danger" onclick="deleteEntry(\\'projects\\')">Delete ' + esc(cur) + '</button></div>';
+    // description.md content rides on the entry; other files load on demand.
+    if (cur === 'description.md') $('projects-body').value = e.content || '';
+    else selectProjectFile(cur);
+    return;
+  }
+  box.innerHTML = '<h3>' + esc(e.name) + '</h3><div class="where">' + esc(state[kind + 'Dir']) + '/' + esc(e.name) + '/SKILL.md</div>' +
     '<textarea id="' + kind + '-body" spellcheck="false"></textarea>' +
     '<div class="editor-bar"><button class="btn" onclick="saveEntry(\\'' + kind + '\\')">Save</button>' +
     '<button class="btn danger" onclick="deleteEntry(\\'' + kind + '\\')">Delete</button></div>';
@@ -479,17 +568,79 @@ function createEntry(kind) {
   $(kind + '-new').value = '';
   renderBrowser(kind); renderDetail(kind);
 }
-function saveEntry(kind) {
+function entryUrl(kind) {
   var name = state.sel[kind];
-  if (!name) return;
-  fetch('/api/' + kind + '/' + encodeURIComponent(name).replace(/%2F/g, '/'), { method: 'PUT', body: $(kind + '-body').value })
-    .then(function (r) { toast(r.ok ? name + ' saved' : 'Save failed', !r.ok); if (r.ok) loadEntries(kind); });
+  if (kind === 'projects') {
+    return '/api/projects/' + encodeURIComponent(name) + '/files/' + encodeURIComponent(state.projFile || 'description.md');
+  }
+  return '/api/' + kind + '/' + encodeURIComponent(name).replace(/%2F/g, '/');
+}
+function saveEntry(kind) {
+  if (!state.sel[kind]) return;
+  var label = kind === 'projects' ? state.sel[kind] + '/' + (state.projFile || 'description.md') : state.sel[kind];
+  fetch(entryUrl(kind), { method: 'PUT', body: $(kind + '-body').value })
+    .then(function (r) { toast(r.ok ? label + ' saved' : 'Save failed', !r.ok); if (r.ok) loadEntries(kind); });
 }
 function deleteEntry(kind) {
-  var name = state.sel[kind];
-  if (!name || !confirm('Delete "' + name + '"?')) return;
-  fetch('/api/' + kind + '/' + encodeURIComponent(name).replace(/%2F/g, '/'), { method: 'DELETE' })
-    .then(function (r) { toast(r.ok ? name + ' deleted' : 'Delete failed', !r.ok); state.sel[kind] = null; loadEntries(kind); });
+  if (!state.sel[kind]) return;
+  var label = kind === 'projects' ? state.sel[kind] + '/' + (state.projFile || 'description.md') : state.sel[kind];
+  if (!confirm('Delete "' + label + '"?')) return;
+  fetch(entryUrl(kind), { method: 'DELETE' })
+    .then(function (r) {
+      toast(r.ok ? label + ' deleted' : 'Delete failed', !r.ok);
+      if (kind === 'projects') state.projFile = null; else state.sel[kind] = null;
+      loadEntries(kind);
+    });
+}
+
+/* ---------- platforms ---------- */
+var platformType = 'mattermost';
+function setPlatformType(t) {
+  platformType = t;
+  $('seg-mattermost').classList.toggle('active', t === 'mattermost');
+  $('seg-slack').classList.toggle('active', t === 'slack');
+  $('pf-help-mattermost').style.display = t === 'mattermost' ? '' : 'none';
+  $('pf-help-slack').style.display = t === 'slack' ? '' : 'none';
+  $('pf-url').style.display = t === 'mattermost' ? '' : 'none';
+  $('pf-token').style.display = t === 'mattermost' ? '' : 'none';
+  $('pf-botToken').style.display = t === 'slack' ? '' : 'none';
+  $('pf-appToken').style.display = t === 'slack' ? '' : 'none';
+}
+function loadPlatforms() {
+  fetch('/api/platforms').then(function (r) { return r.json(); }).then(function (j) {
+    $('platform-list').innerHTML = j.entries.length ? j.entries.map(function (p) {
+      return '<div class="item"><div class="grow"><div class="title">' + esc(p.displayName || p.id) + '</div>' +
+        '<div class="sub">' + esc(p.type) + ' · @' + esc(p.botName || '') + ' · channel ' + esc(p.channelId || '') + ' · token ' + esc(p.token || '') + '</div></div>' +
+        '<button class="btn danger" onclick="removePlatform(\\'' + esc(p.id) + '\\')">Remove</button></div>';
+    }).join('') : '<div class="empty"><div class="big">No platforms yet</div>Add one below and the agent comes online after a restart.</div>';
+  });
+}
+function removePlatform(id) {
+  if (!confirm('Remove platform "' + id + '"? The bot disconnects from it on next restart.')) return;
+  fetch('/api/platforms/' + encodeURIComponent(id), { method: 'DELETE' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { toast(j.ok ? id + ' removed — restart to apply' : 'Failed: ' + (j.error || ''), !j.ok); loadPlatforms(); });
+}
+function addPlatform() {
+  var fields = ['url', 'token', 'botToken', 'appToken', 'channelId', 'botName', 'allowedUsers', 'displayName'];
+  var body = { type: platformType };
+  fields.forEach(function (f) { body[f] = ($('pf-field-' + f).value || '').trim(); });
+  var btn = $('pf-add');
+  btn.disabled = true; btn.textContent = 'Validating…';
+  fetch('/api/platforms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (x) {
+      btn.disabled = false; btn.textContent = 'Validate & add';
+      if (x.ok) {
+        var v = x.j.validated || {};
+        toast('Connected as @' + (v.botUsername || body.botName) + (v.channelName ? ' in #' + v.channelName : '') + ' — restart the bot to go live');
+        fields.forEach(function (f) { $('pf-field-' + f).value = ''; });
+        loadPlatforms(); loadConfig();
+      } else {
+        toast('Validation failed: ' + (x.j.error || 'unknown error'), true);
+      }
+    })
+    .catch(function () { btn.disabled = false; btn.textContent = 'Validate & add'; toast('Request failed', true); });
 }
 
 /* ---------- paths ---------- */
@@ -539,7 +690,7 @@ route();
 loadStatus(); setInterval(loadStatus, 5000);
 loadLogs(); setInterval(loadLogs, 3000);
 window.addEventListener('hashchange', loadLogs);
-loadPersona(); loadConfig(); loadEntries('projects'); loadEntries('skills'); loadPaths();
+loadPersona(); loadConfig(); loadEntries('projects'); loadEntries('skills'); loadPaths(); loadPlatforms();
 </script>
 </body>
 </html>`;

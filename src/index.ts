@@ -340,9 +340,13 @@ async function startWithoutDaemon() {
   // Determine keep-alive setting (actual setup happens after UI is ready)
   const keepAliveEnabled = newConfig.keepAlive !== false;
 
-  // Validate we have at least one platform configured
-  if (!newConfig.platforms || newConfig.platforms.length === 0) {
-    throw new Error('No platforms configured. Run with --setup to configure.');
+  // Zero platforms is allowed: "setup mode". The bot starts with no chat
+  // connections but serves the dashboard, where the user can add a
+  // Mattermost/Slack platform from the browser and restart — no terminal
+  // wizard required. (`platforms: []` in config.yaml gets you here.)
+  if (!newConfig.platforms) newConfig.platforms = [];
+  if (newConfig.platforms.length === 0) {
+    console.log('⚙️  No platforms configured — setup mode. Add one at http://127.0.0.1:7777 (Platforms tab), then restart.');
   }
 
   const config = newConfig;
@@ -352,14 +356,16 @@ async function startWithoutDaemon() {
   // --permission-mode CLI flag > --skip-permissions / --no-skip-permissions
   // (legacy) > platform config's `permissionMode` > platform config's legacy
   // `skipPermissions` > 'default' (safe fallback).
-  const firstPlatformConfig = config.platforms[0] as MattermostPlatformConfig | SlackPlatformConfig;
+  // May be undefined in setup mode (zero platforms) — resolvePermissionMode
+  // falls back to 'default'.
+  const firstPlatformConfig = config.platforms[0] as MattermostPlatformConfig | SlackPlatformConfig | undefined;
   const initialPermissionMode: PermissionMode = resolvePermissionMode({
     permissionMode:
       cliArgs.permissionMode
-      ?? firstPlatformConfig.permissionMode,
+      ?? firstPlatformConfig?.permissionMode,
     skipPermissions:
       cliArgs.skipPermissions
-      ?? firstPlatformConfig.skipPermissions,
+      ?? firstPlatformConfig?.skipPermissions,
   });
 
   // Check Claude CLI version

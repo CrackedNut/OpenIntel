@@ -134,9 +134,34 @@ DIRECTIVES
 fi
 
 # --- config ------------------------------------------------------------------
+write_setup_mode_config() {
+  # Minimal "setup mode" config: the bot starts with zero platforms and the
+  # user connects Mattermost/Slack from the dashboard's Platforms tab.
+  mkdir -p "$(dirname "$CONFIG")"
+  cat > "$CONFIG" <<EOF
+version: 1
+workingDir: $HOME
+chrome: false
+worktreeMode: off
+autoUpdate:
+  enabled: false
+platforms: []
+EOF
+  chmod 600 "$CONFIG"
+  ok "setup-mode config written — connect a platform in the dashboard (Platforms tab)"
+}
+
 if [[ ! -f "$CONFIG" ]]; then
-  log "no config found — launching setup wizard (bot tokens, channel, users)..."
-  bash "$BIN_DIR/claude-threads" setup || die "setup did not complete — rerun: claude-threads setup"
+  if [[ -t 0 || -e /dev/tty ]]; then
+    log "no config found — launching setup wizard (or press Ctrl+C and use the web dashboard instead)..."
+    if ! bash "$BIN_DIR/claude-threads" setup; then
+      log "wizard skipped — falling back to dashboard-based setup"
+      write_setup_mode_config
+    fi
+  else
+    log "no TTY available — using dashboard-based setup"
+    write_setup_mode_config
+  fi
 else
   ok "existing config found at $CONFIG"
 fi

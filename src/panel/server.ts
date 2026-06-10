@@ -93,13 +93,40 @@ function readTextOr(path: string, fallback = ''): string {
   }
 }
 
-/** List <dir>/<name>/description.md entries as {name, content}. */
-function listProjectEntries(dir: string): Array<{ name: string; content: string }> {
+/** One safe markdown filename (no traversal, must end .md). */
+function isSafeMdFile(name: string): boolean {
+  return /^[\w][\w.-]{0,127}\.md$/i.test(name) && !name.includes('..');
+}
+
+/** All .md files in a project dir, description.md first. */
+function listProjectFiles(projectDir: string): string[] {
+  try {
+    const files = readdirSync(projectDir).filter((f) => isSafeMdFile(f)).sort();
+    const i = files.indexOf('description.md');
+    if (i > 0) {
+      files.splice(i, 1);
+      files.unshift('description.md');
+    }
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * List <dir>/<name>/ entries: description.md content (for list subtitles)
+ * plus every markdown file in the project dir for per-file editing.
+ */
+function listProjectEntries(dir: string): Array<{ name: string; content: string; files: string[] }> {
   if (!existsSync(dir)) return [];
   try {
     return readdirSync(dir, { withFileTypes: true })
       .filter((e) => e.isDirectory() && isSafeSegment(e.name))
-      .map((e) => ({ name: e.name, content: readTextOr(join(dir, e.name, 'description.md')) }))
+      .map((e) => ({
+        name: e.name,
+        content: readTextOr(join(dir, e.name, 'description.md')),
+        files: listProjectFiles(join(dir, e.name)),
+      }))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
@@ -175,8 +202,9 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
     try {
       const yaml = await import('js-yaml');
       const parsed = yaml.load(body) as { platforms?: unknown[] } | null;
-      if (!parsed || !Array.isArray(parsed.platforms) || parsed.platforms.length === 0) {
-        return c.json({ ok: false, error: 'config must have at least one entry under `platforms:`' }, 400);
+      // Empty `platforms: []` is allowed (setup mode); a non-array is not.
+      if (!parsed || (parsed.platforms !== undefined && !Array.isArray(parsed.platforms))) {
+        return c.json({ ok: false, error: '`platforms:` must be a list (it may be empty)' }, 400);
       }
     } catch (err) {
       return c.json({ ok: false, error: `invalid YAML: ${err instanceof Error ? err.message : err}` }, 400);
@@ -267,6 +295,33 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
     return c.json({ ok: true });
   });
 
+  // ---- per-file project markdown (notes, playbooks, status, …) -------------
+  app.get('/api/projects/:name/files/:file', (c) => {
+    const { name, file } = c.req.param();
+    if (!isSafeSegment(name) || !isSafeMdFile(file)) return c.json({ ok: false, error: 'invalid name' }, 400);
+    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    return c.json({ content: readTextOr(join(projectsDir, name, file)) });
+  });
+  app.put('/api/projects/:name/files/:file', async (c) => {
+    const { name, file } = c.req.param();
+    if (!isSafeSegment(name) || !isSafeMdFile(file)) return c.json({ ok: false, error: 'invalid name' }, 400);
+    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const dir = join(projectsDir, name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, file), await c.req.text());
+    options.log('info', `panel: project file "${name}/${file}" saved`);
+    return c.json({ ok: true });
+  });
+  app.delete('/api/projects/:name/files/:file', (c) => {
+    const { name, file } = c.req.param();
+    if (!isSafeSegment(name) || !isSafeMdFile(file)) return c.json({ ok: false, error: 'invalid name' }, 400);
+    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const target = join(projectsDir, name, file);
+    if (existsSync(target)) rmSync(target);
+    options.log('info', `panel: project file "${name}/${file}" deleted`);
+    return c.json({ ok: true });
+  });
+
   // ---- skills (supports "name" and "category/name") -------------------------
   app.get('/api/skills', (c) => {
     const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
@@ -293,6 +348,107 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
     const target = join(skillsDir, name, 'SKILL.md');
     if (existsSync(target)) rmSync(target);
     options.log('info', `panel: skill "${name}" removed`);
+    return c.json({ ok: true });
+  });
+
+  // ---- platforms (UI-based setup, no terminal wizard needed) ----------------
+  app.get('/api/platforms', (c) => {
+    const config = loadConfigWithMigration();
+    const mask = (t?: string) => (t ? t.slice(0, 4) + '…' + t.slice(-4) : '');
+    const entries = (config?.platforms ?? []).map((p) => {
+      const x = p as Record<string, string | undefined>;
+      return {
+        id: x.id,
+        type: x.type,
+        displayName: x.displayName,
+        botName: x.botName,
+        channelId: x.channelId,
+        url: x.url,
+        token: mask(x.token ?? x.botToken),
+      };
+    });
+    return c.json({ entries });
+  });
+
+  app.post('/api/platforms', async (c) => {
+    let body: Record<string, string>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ ok: false, error: 'expected JSON body' }, 400);
+    }
+    const type = body.type;
+    const required =
+      type === 'mattermost'
+        ? ['url', 'token', 'channelId', 'botName']
+        : type === 'slack'
+          ? ['botToken', 'appToken', 'channelId', 'botName']
+          : null;
+    if (!required) return c.json({ ok: false, error: 'type must be "mattermost" or "slack"' }, 400);
+    for (const k of required) {
+      if (!body[k]?.trim()) return c.json({ ok: false, error: `missing field: ${k}` }, 400);
+    }
+
+    // Validate credentials with real API calls before touching the config.
+    const { validateMattermostCredentials, validateSlackCredentials } = await import('../onboarding.js');
+    const url = (body.url ?? '').replace(/\/+$/, '');
+    const result =
+      type === 'mattermost'
+        ? await validateMattermostCredentials(url, body.token, body.channelId)
+        : await validateSlackCredentials(body.botToken, body.appToken, body.channelId);
+    if (!result.success) return c.json({ ok: false, error: result.error ?? 'credential validation failed' }, 400);
+
+    const config = loadConfigWithMigration();
+    if (!config) return c.json({ ok: false, error: 'no config to update' }, 400);
+    config.platforms = config.platforms ?? [];
+
+    const id = (body.id?.trim() || `${type}-${body.botName}`).toLowerCase().replace(/[^a-z0-9-]+/g, '-');
+    if (config.platforms.some((p) => (p as { id?: string }).id === id)) {
+      return c.json({ ok: false, error: `platform id "${id}" already exists` }, 400);
+    }
+    const allowedUsers = (body.allowedUsers ?? '')
+      .split(/[,\s]+/)
+      .map((u) => u.replace(/^@/, '').trim())
+      .filter(Boolean);
+
+    const entry: Record<string, unknown> = {
+      id,
+      type,
+      displayName: body.displayName?.trim() || result.teamName || id,
+      channelId: body.channelId.trim(),
+      botName: result.botUsername || body.botName.trim(),
+      allowedUsers,
+      skipPermissions: false,
+      sessionHeader: 'hidden',
+      stickyMessage: 'hidden',
+    };
+    if (type === 'mattermost') {
+      entry.url = url;
+      entry.token = body.token.trim();
+    } else {
+      entry.botToken = body.botToken.trim();
+      entry.appToken = body.appToken.trim();
+    }
+    config.platforms.push(entry as (typeof config.platforms)[number]);
+    saveConfig(config);
+    options.log('info', `panel: platform "${id}" added (${type}) — restart to connect`);
+    return c.json({
+      ok: true,
+      id,
+      validated: { botUsername: result.botUsername, channelName: result.channelName, teamName: result.teamName },
+      note: 'saved — restart the bot to connect',
+    });
+  });
+
+  app.delete('/api/platforms/:id', (c) => {
+    const id = c.req.param('id');
+    const config = loadConfigWithMigration();
+    if (!config) return c.json({ ok: false, error: 'no config' }, 400);
+    const before = config.platforms?.length ?? 0;
+    config.platforms = (config.platforms ?? []).filter((p) => (p as { id?: string }).id !== id);
+    if (config.platforms.length === before) return c.json({ ok: false, error: 'no such platform' }, 404);
+    saveConfig(config);
+    options.log('info', `panel: platform "${id}" removed — restart to apply`);
     return c.json({ ok: true });
   });
 
