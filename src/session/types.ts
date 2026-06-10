@@ -64,6 +64,16 @@ export interface InitialSessionOptions {
    * `channelMode` when this is set.
    */
   forceThreadMode?: boolean;
+  /**
+   * Topic for a thread-mode session (from `!thread <topic>`). Used as
+   * the session title so the thread has a descriptive name.
+   */
+  threadTopic?: string;
+  /**
+   * Whether to include recent channel history in the thread session's
+   * initial context (from `!thread <topic> -history`).
+   */
+  threadIncludeHistory?: boolean;
 }
 
 // =============================================================================

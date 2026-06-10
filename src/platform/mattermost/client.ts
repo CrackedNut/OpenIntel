@@ -457,6 +457,57 @@ export class MattermostClient extends BasePlatformClient {
   }
 
   /**
+   * Get recent channel-root conversation. Thread replies (`root_id` set)
+   * and system messages (`type` set: joins, pins, …) are excluded — this is
+   * the channel-level dialogue as a channel-mode session sees it.
+   */
+  async getChannelHistory(
+    options?: { limit?: number; excludeBotMessages?: boolean }
+  ): Promise<ThreadMessage[]> {
+    try {
+      // per_page is post count before filtering; fetch the API max so the
+      // root-post filter still leaves enough conversation in busy channels.
+      const response = await this.api<{
+        order: string[];
+        posts: Record<string, MattermostPost>;
+      }>('GET', `/channels/${this.channelId}/posts?page=0&per_page=100`);
+
+      const messages: ThreadMessage[] = [];
+      for (const postId of response.order) {
+        const post = response.posts[postId];
+        if (!post) continue;
+        if (post.root_id) continue; // thread reply, not channel-level
+        if (post.type) continue; // system message (join/leave/pin/…)
+        if (options?.excludeBotMessages && post.user_id === this.botUserId) {
+          continue;
+        }
+
+        const user = await this.getUser(post.user_id);
+        messages.push({
+          id: post.id,
+          userId: post.user_id,
+          username: user?.username || 'unknown',
+          message: post.message,
+          createAt: post.create_at,
+        });
+      }
+
+      // Sort by createAt (oldest first)
+      messages.sort((a, b) => a.createAt - b.createAt);
+
+      // Apply limit (keep the most recent N)
+      const limit = options?.limit ?? 30;
+      if (messages.length > limit) {
+        return messages.slice(-limit);
+      }
+      return messages;
+    } catch (err) {
+      log.warn(`Failed to get channel history: ${err}`);
+      return [];
+    }
+  }
+
+  /**
    * Get channel posts created after a specific post ID.
    * Used for recovering missed messages after a disconnection.
    *

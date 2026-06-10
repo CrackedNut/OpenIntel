@@ -1046,6 +1046,9 @@ export async function startSession(
     // back-compat shape of `Session` and `PersistedSession`.
     mode: channelMode ? 'channel' : undefined,
     channelId: channelMode?.channelId,
+    // `!thread <topic>` names the session up front; the auto-title metadata
+    // pass skips sessions that already have a title.
+    sessionTitle: initialOptions?.threadTopic?.substring(0, 80) || undefined,
     startedBy: username,
     startedByDisplayName: displayName,
     startedAt: new Date(),

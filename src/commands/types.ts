@@ -20,6 +20,16 @@ export interface CommandExecutorContext {
   commandContext: CommandContext;
   /** Thread ID where the command was issued */
   threadId: string;
+  /**
+   * Safe reply target for direct `client.createPost` calls. For thread
+   * posts this equals `threadId`; for channel-root posts it is `undefined`
+   * so the reply lands at the channel root. NEVER pass `threadId` to
+   * `createPost` — in channel mode it carries the channelId, which
+   * platforms reject as a root_id (Mattermost 400 "Invalid RootId").
+   */
+  replyTo?: string;
+  /** ID of the post that carried this command (e.g. for thread anchoring) */
+  triggeringPostId?: string;
   /** Username of the person who issued the command */
   username: string;
   /** Platform client for posting messages */
@@ -52,6 +62,17 @@ export interface InitialSessionOptions {
    * this flag and clears `channelMode` before starting the session.
    */
   forceThreadMode?: boolean;
+  /**
+   * Topic for a thread-mode session (from `!thread <topic>`). Doubles as
+   * the session title so the thread is named before auto-title metadata
+   * arrives.
+   */
+  threadTopic?: string;
+  /**
+   * Include recent channel history as context in the new thread session's
+   * initial prompt (from `!thread <topic> -history`). Default: fresh start.
+   */
+  threadIncludeHistory?: boolean;
 }
 
 /** Result of command execution */

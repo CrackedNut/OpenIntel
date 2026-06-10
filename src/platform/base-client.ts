@@ -168,6 +168,13 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
   ): Promise<ThreadMessage[]>;
 
   /**
+   * Get recent channel-root conversation (thread replies excluded).
+   */
+  abstract getChannelHistory(
+    options?: { limit?: number; excludeBotMessages?: boolean }
+  ): Promise<ThreadMessage[]>;
+
+  /**
    * Check if a message mentions the bot.
    */
   abstract isBotMentioned(message: string): boolean;

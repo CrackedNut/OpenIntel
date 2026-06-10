@@ -221,6 +221,17 @@ export interface PlatformClient extends EventEmitter {
     options?: { limit?: number; excludeBotMessages?: boolean }
   ): Promise<ThreadMessage[]>;
 
+  /**
+   * Get recent channel-root conversation (thread replies and system
+   * messages excluded). Used to seed `!thread <topic> -history` sessions
+   * with channel context.
+   * @param options - Optional filtering/limiting options
+   * @returns Array of messages in chronological order (oldest first)
+   */
+  getChannelHistory(
+    options?: { limit?: number; excludeBotMessages?: boolean }
+  ): Promise<ThreadMessage[]>;
+
   // ============================================================================
   // Reactions
   // ============================================================================

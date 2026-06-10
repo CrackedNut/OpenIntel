@@ -16,6 +16,7 @@ import type {
 import { generateHelpMessage } from './help-generator.js';
 import { getReleaseNotes, formatReleaseNotes } from '../changelog.js';
 import { VERSION } from '../version.js';
+import { buildChannelHistoryContext } from '../operations/channel-history.js';
 
 // =============================================================================
 // Command Handler Registry
@@ -51,7 +52,7 @@ function getSubcommandDef(command: string, subcommand: string) {
  */
 const handleHelp: CommandHandler = async (ctx) => {
   const helpMessage = generateHelpMessage(ctx.formatter);
-  await ctx.client.createPost(helpMessage, ctx.threadId);
+  await ctx.client.createPost(helpMessage, ctx.replyTo);
   return { handled: true };
 };
 
@@ -61,11 +62,11 @@ const handleHelp: CommandHandler = async (ctx) => {
 const handleReleaseNotes: CommandHandler = async (ctx) => {
   const notes = getReleaseNotes(VERSION);
   if (notes) {
-    await ctx.client.createPost(formatReleaseNotes(notes, ctx.formatter), ctx.threadId);
+    await ctx.client.createPost(formatReleaseNotes(notes, ctx.formatter), ctx.replyTo);
   } else {
     await ctx.client.createPost(
       `📋 ${ctx.formatter.formatBold(`claude-threads v${VERSION}`)}\n\nRelease notes not available. See ${ctx.formatter.formatLink('GitHub releases', 'https://github.com/anneschuth/claude-threads/releases')}.`,
-      ctx.threadId
+      ctx.replyTo
     );
   }
   return { handled: true };
@@ -121,7 +122,7 @@ const handleQueue: CommandHandler = async (ctx, args) => {
   if (!args || !args.trim()) {
     await ctx.client.createPost(
       `❌ Usage: ${ctx.formatter.formatCode('!queue <message>')}`,
-      ctx.threadId,
+      ctx.replyTo,
     );
     return { handled: true };
   }
@@ -142,7 +143,7 @@ const handleSteer: CommandHandler = async (ctx, args) => {
   if (!args || !args.trim()) {
     await ctx.client.createPost(
       `❌ Usage: ${ctx.formatter.formatCode('!steer <message>')}`,
-      ctx.threadId,
+      ctx.replyTo,
     );
     return { handled: true };
   }
@@ -288,7 +289,7 @@ const handlePermissions: CommandHandler = async (ctx, args) => {
   if (!mode) {
     await ctx.client.createPost(
       `⚠️ Unknown permission mode. Usage: \`!permissions default|auto|bypass\` (aliases: \`interactive\`, \`skip\`).`,
-      ctx.threadId,
+      ctx.replyTo,
     );
     return { handled: true };
   }
@@ -298,35 +299,101 @@ const handlePermissions: CommandHandler = async (ctx, args) => {
 };
 
 /**
+ * Parse `!thread` arguments: an optional topic plus an optional `-history`
+ * (or `--history`) flag, which may appear anywhere in the arg string.
+ *
+ *   "fix the auth bug"           → { topic: "fix the auth bug", includeHistory: false }
+ *   "fix the auth bug -history"  → { topic: "fix the auth bug", includeHistory: true }
+ *   "-history"                   → { topic: undefined, includeHistory: true }
+ *
+ * The flag must be a standalone token — words that merely contain
+ * "-history" (e.g. "pre-history") are left in the topic.
+ */
+export function parseThreadArgs(
+  args: string | undefined,
+): { topic?: string; includeHistory: boolean } {
+  if (!args?.trim()) return { includeHistory: false };
+  const kept: string[] = [];
+  let includeHistory = false;
+  for (const token of args.trim().split(/\s+/)) {
+    if (/^--?history$/i.test(token)) {
+      includeHistory = true;
+      continue;
+    }
+    kept.push(token);
+  }
+  const topic = kept.join(' ').trim();
+  return { topic: topic || undefined, includeHistory };
+}
+
+/**
  * Handle !thread command.
  *
- * Opts out of channel-mode when an @mention at channel root would otherwise
- * spawn a shared channel session. The actual mode flip happens in the
- * message handler — this just sets a flag.
+ * First-message (`@bot !thread <prompt>` at channel root): opts out of
+ * channel-mode. Only sets a flag — the routing (re-anchoring the session
+ * at the @mention post, extracting `-history` from the prompt) lives in
+ * the message handler, because `threadRoot`/`channelMode` are
+ * message-handler concepts.
  *
- * In-session calls (where !thread is typed after the session already
- * exists) post a hint instead, since switching a live session's mode is
- * not yet supported and silently doing so would lose context.
+ * In-session inside a CHANNEL-mode session (`!thread [topic] [-history]`
+ * typed at channel root while the shared session is running): spawns a
+ * brand-new thread-mode session — its own Claude instance — anchored to a
+ * fresh 🧵 root post, leaving the channel session untouched. `topic` seeds
+ * the prompt and session title; `-history` seeds the new session with the
+ * recent channel conversation (default: fresh start).
+ *
+ * In-session inside a THREAD-mode session: no-op hint. Switching a live
+ * session's mode would lose context (persisted threadId, sticky message,
+ * and collaborator allowlist are all keyed on it).
  */
-const handleThread: CommandHandler = async (ctx) => {
+const handleThread: CommandHandler = async (ctx, args) => {
   if (ctx.commandContext === 'first-message') {
-    // First-message: set the opt-out flag and let stacking continue.
-    // The message handler is responsible for clearing `channelMode` and
-    // re-routing the post.id as the thread root.
     return {
       sessionOptions: { forceThreadMode: true },
       continueProcessing: true,
     };
   }
 
-  // In-session: friendly hint, no state change. We avoid switching modes
-  // mid-session because the persisted threadId, sticky message, and
-  // collaborator allowlist are all keyed on it.
+  const platformId = ctx.client.platformId;
+  const channelSession = ctx.sessionManager.findChannelSession(platformId, ctx.threadId);
+  if (channelSession) {
+    if (!ctx.isAllowed) return { handled: true };
+    const { topic, includeHistory } = parseThreadArgs(args);
+
+    // A fresh root post is the new thread's anchor. We cannot thread off
+    // the user's `!thread` post here — it was consumed by this command and
+    // threading off it would bury the new session under a bare "!thread".
+    const anchor = await ctx.client.createPost(
+      `🧵 ${ctx.formatter.formatBold(topic ?? 'Thread session')} — started by ${ctx.formatter.formatUserMention(ctx.username)}`,
+      undefined,
+    );
+
+    let prompt =
+      topic ??
+      'The user opened a fresh thread session from the channel. Briefly confirm you are ready and ask what they want to work on.';
+    if (includeHistory) {
+      const historyContext = await buildChannelHistoryContext(ctx.client, ctx.triggeringPostId);
+      if (historyContext) prompt = `${historyContext}${prompt}`;
+    }
+
+    await ctx.sessionManager.startSession(
+      { prompt },
+      ctx.username,
+      anchor.id,
+      platformId,
+      undefined,
+      ctx.triggeringPostId,
+      { forceThreadMode: true, threadTopic: topic },
+    );
+    return { handled: true };
+  }
+
+  // Thread-mode session: keep the friendly hint, but post it to the safe
+  // reply target (ctx.replyTo) — never ctx.threadId, see CommandExecutorContext.
   await ctx.client.createPost(
-    `ℹ️ ${ctx.formatter.formatBold('!thread')} only applies when starting a session at channel root. ` +
-      `This session is already running — use ${ctx.formatter.formatCode('!stop')} and start a new one with ` +
-      `${ctx.formatter.formatCode('@bot !thread <prompt>')} if you want a thread-mode session here.`,
-    ctx.threadId,
+    `ℹ️ ${ctx.formatter.formatBold('!thread')} starts a new thread session from the channel root. ` +
+      `This session already lives in its own thread — just keep replying here.`,
+    ctx.replyTo,
   );
   return { handled: true };
 };
@@ -364,7 +431,7 @@ const handleWorktree: CommandHandler = async (ctx, args) => {
         if (!subArgs) {
           await ctx.client.createPost(
             `❌ Usage: ${ctx.formatter.formatCode('!worktree switch <branch>')}`,
-            ctx.threadId
+            ctx.replyTo
           );
           return { handled: true };
         }
@@ -402,7 +469,7 @@ const handleWorktree: CommandHandler = async (ctx, args) => {
         if (!subArgs) {
           await ctx.client.createPost(
             `❌ Usage: ${ctx.formatter.formatCode('!worktree remove <branch>')}`,
-            ctx.threadId
+            ctx.replyTo
           );
           return { handled: true };
         }
@@ -474,7 +541,7 @@ const handlePlugin: CommandHandler = async (ctx, args) => {
       if (!pluginName) {
         await ctx.client.createPost(
           `❌ Usage: ${ctx.formatter.formatCode('!plugin install <plugin-name>')}`,
-          ctx.threadId
+          ctx.replyTo
         );
       } else {
         await ctx.sessionManager.pluginInstall(ctx.threadId, pluginName, ctx.username);
@@ -484,7 +551,7 @@ const handlePlugin: CommandHandler = async (ctx, args) => {
       if (!pluginName) {
         await ctx.client.createPost(
           `❌ Usage: ${ctx.formatter.formatCode('!plugin uninstall <plugin-name>')}`,
-          ctx.threadId
+          ctx.replyTo
         );
       } else {
         await ctx.sessionManager.pluginUninstall(ctx.threadId, pluginName, ctx.username);
@@ -493,7 +560,7 @@ const handlePlugin: CommandHandler = async (ctx, args) => {
     default:
       await ctx.client.createPost(
         `❌ Unknown subcommand: ${ctx.formatter.formatCode(subcommand)}. Use ${ctx.formatter.formatCode('list')}, ${ctx.formatter.formatCode('install')}, or ${ctx.formatter.formatCode('uninstall')}.`,
-        ctx.threadId
+        ctx.replyTo
       );
   }
   return { handled: true };
@@ -517,7 +584,7 @@ const handleSearch: CommandHandler = async (ctx, args) => {
   if (!args) {
     await ctx.client.createPost(
       `❌ Usage: ${ctx.formatter.formatCode('!search <query>')} (or ${ctx.formatter.formatCode('!search platform <query>')} / ${ctx.formatter.formatCode('!search all <query>')}).`,
-      ctx.threadId,
+      ctx.replyTo,
     );
     return { handled: true };
   }
@@ -530,7 +597,7 @@ const handleSearch: CommandHandler = async (ctx, args) => {
     query = scopeMatch[2].trim();
   }
   if (!query) {
-    await ctx.client.createPost(`❌ Empty search query.`, ctx.threadId);
+    await ctx.client.createPost(`❌ Empty search query.`, ctx.replyTo);
     return { handled: true };
   }
   await ctx.sessionManager.searchArchiveCommand(

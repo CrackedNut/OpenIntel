@@ -1889,6 +1889,165 @@ describe('handleMessage', () => {
       expect(startArgs[0].prompt).toBe('do work');
     });
 
+    test('in-session command reply at channel root targets channel root, not channelId (Invalid RootId regression)', async () => {
+      // Active channel-mode session: bare commands route down the in-session
+      // path where ctx.threadId carries the channelId. The reply target must
+      // be undefined (channel root) — passing the channelId as root_id is
+      // what Mattermost rejects with 400 "Invalid RootId".
+      const channelSession = { sessionId: 'mm:c-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => channelSession);
+
+      const post: PlatformPost = {
+        id: 'p-cmd',
+        rootId: '', // channel root
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: '!queue',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      const calls = (client.createPost as any).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const [msg, target] = calls[0];
+      expect(msg).toContain('!queue');
+      expect(target).toBeUndefined();
+    });
+
+    test('!thread typed in an active channel-mode session spawns a new thread session', async () => {
+      const channelSession = { sessionId: 'mm:c-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => channelSession);
+
+      const post: PlatformPost = {
+        id: 'p-cmd',
+        rootId: '', // channel root
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: '!thread fix the login bug',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      // A 🧵 anchor post was created at channel root (undefined target).
+      const anchorCall = (client.createPost as any).mock.calls.find(
+        ([msg]: [string]) => msg.includes('🧵')
+      );
+      expect(anchorCall).toBeDefined();
+      expect(anchorCall[0]).toContain('fix the login bug');
+      expect(anchorCall[1]).toBeUndefined();
+
+      // A new thread-mode session starts, anchored at the anchor post.
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      expect(startArgs[0].prompt).toBe('fix the login bug');
+      expect(startArgs[2]).toBe('post_1'); // mock createPost id of the anchor
+      expect(startArgs[3]).toBe('test-platform');
+      expect(startArgs[6]).toMatchObject({
+        forceThreadMode: true,
+        threadTopic: 'fix the login bug',
+      });
+    });
+
+    test('bare !thread in a channel-mode session spawns with a default prompt and generic anchor', async () => {
+      const channelSession = { sessionId: 'mm:c-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => channelSession);
+
+      const post: PlatformPost = {
+        id: 'p-cmd',
+        rootId: '',
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: '!thread',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      const anchorCall = (client.createPost as any).mock.calls.find(
+        ([msg]: [string]) => msg.includes('🧵')
+      );
+      expect(anchorCall).toBeDefined();
+      expect(anchorCall[0]).toContain('Thread session');
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      expect(startArgs[0].prompt).toContain('fresh thread session');
+      expect(startArgs[6].threadTopic).toBeUndefined();
+      expect(startArgs[6].forceThreadMode).toBe(true);
+    });
+
+    test('!thread <topic> -history seeds the new session with channel history (own command post excluded)', async () => {
+      const channelSession = { sessionId: 'mm:c-1' } as any;
+      (session.findChannelSession as any).mockImplementation(() => channelSession);
+      (client as any).getChannelHistory = mock(async () => [
+        { id: 'm1', userId: 'u-2', username: 'bob', message: 'we discussed the login bug earlier', createAt: 1 },
+        { id: 'p-cmd', userId: 'u-1', username: 'alice', message: '!thread fix it -history', createAt: 2 },
+      ]);
+
+      const post: PlatformPost = {
+        id: 'p-cmd',
+        rootId: '',
+        channelId: 'c-1',
+        userId: 'u-1',
+        message: '!thread fix it -history',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      // History block + topic in the prompt; the triggering "!thread …" post
+      // and the -history flag itself must not leak in.
+      expect(startArgs[0].prompt).toContain('we discussed the login bug earlier');
+      expect(startArgs[0].prompt).toContain('fix it');
+      expect(startArgs[0].prompt).not.toContain('-history');
+      expect(startArgs[6]).toMatchObject({ forceThreadMode: true, threadTopic: 'fix it' });
+    });
+
+    test('first-message @bot !thread <prompt> -history strips the flag and prepends channel history', async () => {
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!thread fix auth -history');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+      (client as any).getChannelHistory = mock(async () => [
+        { id: 'm1', userId: 'u-2', username: 'bob', message: 'earlier auth talk', createAt: 1 },
+      ]);
+
+      const post: PlatformPost = {
+        id: 'p-fm',
+        rootId: '', // channel root
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !thread fix auth -history',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).toHaveBeenCalled();
+      const startArgs = (session.startSession as any).mock.calls[0];
+      expect(startArgs[2]).toBe('p-fm'); // anchored at the @mention post
+      expect(startArgs[0].prompt).toContain('earlier auth talk');
+      expect(startArgs[0].prompt).toContain('fix auth');
+      expect(startArgs[0].prompt).not.toContain('-history');
+      expect(startArgs[6].forceThreadMode).toBe(true);
+      expect(startArgs[6].channelMode).toBeUndefined();
+    });
+
     test('direct error posts go to channel root (no thread reply) for channel-root posts', async () => {
       (client.isBotMentioned as any).mockImplementation(() => true);
       (client.extractPrompt as any).mockImplementation(() => '');

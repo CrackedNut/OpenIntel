@@ -18,6 +18,7 @@ import {
 } from './commands/index.js';
 import type { InitialSessionOptions } from './session/types.js';
 import { logSilentError } from './utils/error-handler/index.js';
+import { buildChannelHistoryContext } from './operations/channel-history.js';
 
 /**
  * Logger interface for message handler
@@ -157,6 +158,11 @@ export async function handleMessage(
         const ctx: CommandExecutorContext = {
           commandContext: 'in-session',
           threadId: threadRoot,
+          // Safe target for direct createPost calls: undefined at channel
+          // root (threadRoot carries the channelId there, which platforms
+          // reject as a root_id — Mattermost 400 "Invalid RootId").
+          replyTo: directReplyTo,
+          triggeringPostId: post.id,
           username,
           client,
           sessionManager: session,
@@ -309,6 +315,8 @@ export async function handleMessage(
     const ctx: CommandExecutorContext = {
       commandContext: 'first-message',
       threadId: threadRoot,
+      replyTo: directReplyTo,
+      triggeringPostId: post.id,
       username,
       client,
       sessionManager: session,
@@ -384,6 +392,19 @@ export async function handleMessage(
       if (isChannelPost) {
         initialOptions.channelMode = undefined;
         effectiveThreadRoot = post.id;
+        // `!thread ... -history`: the flag rides in the remainder (the
+        // !thread stackable pattern has no arg group), so it lands in the
+        // prompt. Strip the standalone token and seed the session with the
+        // recent channel conversation.
+        if (/(^|\s)--?history(?=\s|$)/i.test(prompt)) {
+          prompt = prompt.replace(/(^|\s)--?history(?=\s|$)/gi, '$1').replace(/[ \t]{2,}/g, ' ').trim();
+          if (!prompt) {
+            prompt =
+              'The user opened a fresh thread session from the channel. Briefly confirm you are ready and ask what they want to work on.';
+          }
+          const historyContext = await buildChannelHistoryContext(client, post.id);
+          if (historyContext) prompt = `${historyContext}${prompt}`;
+        }
       } else {
         await client.createPost(
           `ℹ️ ${formatter.formatCode('!thread')} is a no-op inside a thread — sessions started here are already thread-mode.`,

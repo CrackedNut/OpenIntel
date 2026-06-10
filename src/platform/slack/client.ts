@@ -1026,6 +1026,51 @@ export class SlackClient extends BasePlatformClient {
     }
   }
 
+  /**
+   * Get recent channel-root conversation. Thread replies never appear in
+   * conversations.history (only parents do), and messages with a subtype
+   * (joins, pins, …) are skipped as system noise.
+   */
+  async getChannelHistory(
+    options?: { limit?: number; excludeBotMessages?: boolean }
+  ): Promise<ThreadMessage[]> {
+    try {
+      const limit = options?.limit ?? 30;
+      const response = await this.api<ConversationsHistoryResponse>(
+        'GET',
+        `conversations.history?channel=${this.channelId}&limit=${Math.min(limit, 100)}`
+      );
+
+      const messages: ThreadMessage[] = [];
+
+      for (const msg of response.messages || []) {
+        if (msg.subtype) continue; // system message
+        if (options?.excludeBotMessages && (msg.user === this.botUserId || msg.bot_id)) {
+          continue;
+        }
+
+        const user = await this.getUser(msg.user || '');
+        const username = user?.username || 'unknown';
+
+        messages.push({
+          id: msg.ts,
+          userId: msg.user || '',
+          username,
+          message: msg.text,
+          createAt: Math.floor(parseFloat(msg.ts) * 1000),
+        });
+      }
+
+      // Sort by timestamp (oldest first) - API returns newest first
+      messages.sort((a, b) => a.createAt - b.createAt);
+
+      return messages;
+    } catch (err) {
+      log.warn(`Failed to get channel history: ${err}`);
+      return [];
+    }
+  }
+
   // ============================================================================
   // Reactions
   // ============================================================================
