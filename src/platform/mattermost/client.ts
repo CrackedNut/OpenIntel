@@ -42,6 +42,7 @@ export class MattermostClient extends BasePlatformClient {
   private outboundFiles?: { enabled?: boolean; maxBytes?: number };
   private userCache: Map<string, MattermostUser> = new Map();
   private botUserId: string | null = null;
+  private botUsername: string | null = null;
   private readonly formatter = new MattermostFormatter();
 
   // Track last processed post for message recovery after disconnection
@@ -223,6 +224,11 @@ export class MattermostClient extends BasePlatformClient {
   async getBotUser(): Promise<PlatformUser> {
     const user = await this.api<MattermostUser>('GET', '/users/me');
     this.botUserId = user.id;
+    // Remember the ACTUAL account username so mention matching works even
+    // when config `botName` drifts from the real handle (e.g. botName
+    // "thropic" vs account "natethropic" — @natethropic would never match
+    // @thropic\b, silently making the bot ignore every mention).
+    this.botUsername = user.username || null;
     return this.normalizePlatformUser(user);
   }
 
@@ -748,18 +754,27 @@ export class MattermostClient extends BasePlatformClient {
   }
 
   // Check if message mentions the bot
+  /**
+   * Alternation of every handle the bot answers to: the configured
+   * `botName` plus the account's real username (fetched at connect).
+   * Matching both keeps mentions working when config drifts from the
+   * actual Mattermost account name.
+   */
+  private botNamePattern(): string {
+    const names = [...new Set([this.botName, this.botUsername].filter(Boolean))] as string[];
+    return names.map(escapeRegExp).join('|');
+  }
+
   isBotMentioned(message: string): boolean {
-    const botName = escapeRegExp(this.botName);
     // Match @botname at start or with space before
-    const mentionPattern = new RegExp(`(^|\\s)@${botName}\\b`, 'i');
+    const mentionPattern = new RegExp(`(^|\\s)@(${this.botNamePattern()})\\b`, 'i');
     return mentionPattern.test(message);
   }
 
   // Extract prompt from message (remove bot mention)
   extractPrompt(message: string): string {
-    const botName = escapeRegExp(this.botName);
     return message
-      .replace(new RegExp(`(^|\\s)@${botName}\\b`, 'gi'), ' ')
+      .replace(new RegExp(`(^|\\s)@(${this.botNamePattern()})\\b`, 'gi'), ' ')
       .trim();
   }
 

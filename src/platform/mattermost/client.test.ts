@@ -105,6 +105,20 @@ describe('MattermostClient pure helpers', () => {
     expect(c.isBotMentioned('@botXv2 hello')).toBe(false);
   });
 
+  it('isBotMentioned also matches the real account username when config botName drifts', () => {
+    // Regression: config said botName "thropic" while the account was
+    // "natethropic" — @natethropic never matched @thropic\b, so the bot
+    // silently ignored every mention. The real username (captured at
+    // getBotUser) must match too.
+    const c = makeClient({ botName: 'thropic' });
+    expect(c.isBotMentioned('@natethropic hey')).toBe(false); // not fetched yet
+    (c as unknown as { botUsername: string }).botUsername = 'natethropic';
+    expect(c.isBotMentioned('@natethropic hey')).toBe(true);
+    expect(c.isBotMentioned('@thropic hey')).toBe(true); // configured name still works
+    expect(c.isBotMentioned('no mention')).toBe(false);
+    expect(c.extractPrompt('@natethropic do the thing')).toBe('do the thing');
+  });
+
   it('extractPrompt strips bot mention and trims', () => {
     const c = makeClient({ botName: 'claude' });
     expect(c.extractPrompt('@claude write a test')).toBe('write a test');
