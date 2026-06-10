@@ -12,8 +12,14 @@ Built on a fork of [anneschuth/claude-threads](https://github.com/anneschuth/cla
 
 ## Install (one-liner)
 
+OpenIntel is a private repo, so installs need a GitHub token with read access
+(create a fine-grained PAT at github.com/settings/personal-access-tokens with
+Contents: read on this repo):
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
+export GITHUB_TOKEN=github_pat_xxx
+curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+  https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
 ```
 
 On a fresh machine this installs bun + the Claude Code CLI if missing, clones and builds OpenIntel, runs an interactive wizard for your bot token/channel, seeds an editable agent persona, starts the daemon, and prints the dashboard URL. Each device gets its own agent for its own project.

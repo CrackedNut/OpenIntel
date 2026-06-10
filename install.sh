@@ -2,7 +2,9 @@
 # OpenIntel one-liner installer — get a chat-driven Claude Code agent
 # running on a fresh machine:
 #
-#   curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
+#   export GITHUB_TOKEN=github_pat_xxx   # repo is private — token needs Contents:read
+#   curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
+#     https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
 #
 # What it does:
 #   1. Installs bun if missing (git must already exist)
@@ -16,7 +18,7 @@
 #   CLAUDE_THREADS_REPO_SLUG  github slug          (default: CrackedNut/OpenIntel)
 #   CLAUDE_THREADS_REF        branch/tag to run    (default: main)
 #   CLAUDE_THREADS_REPO       checkout path        (default: ~/code/claude-threads-agent)
-#   GITHUB_TOKEN              for private forks
+#   GITHUB_TOKEN              REQUIRED (private repo): used for clone + raw fetch
 #   CLAUDE_THREADS_NO_START   set 1 to skip starting the daemon
 
 set -euo pipefail
@@ -56,6 +58,8 @@ fi
 CLONE_URL="https://github.com/$SLUG.git"
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   CLONE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/$SLUG.git"
+elif [[ ! -d "$DEST/.git" ]]; then
+  die "OpenIntel is a private repo — set GITHUB_TOKEN (fine-grained PAT with Contents:read) and re-run"
 fi
 
 if [[ -d "$DEST/.git" ]]; then
