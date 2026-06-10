@@ -29,8 +29,8 @@ describe('version', () => {
       expect(PKG.version).toBe(VERSION);
     });
 
-    it('name is claude-threads', () => {
-      expect(PKG.name).toBe('claude-threads');
+    it('name is openintel', () => {
+      expect(PKG.name).toBe('openintel');
     });
   });
 });

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# claude-threads one-liner installer — get a chat-driven Claude Code agent
+# OpenIntel one-liner installer — get a chat-driven Claude Code agent
 # running on a fresh machine:
 #
-#   curl -fsSL https://raw.githubusercontent.com/CrackedNut/claude-threads-agent/claude/thread-spawn-and-channel-replies/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
 #
 # What it does:
 #   1. Installs bun if missing (git must already exist)
@@ -13,7 +13,7 @@
 #   5. Starts the bot daemon and prints the dashboard URL
 #
 # Env overrides:
-#   CLAUDE_THREADS_REPO_SLUG  github slug          (default: CrackedNut/claude-threads-agent)
+#   CLAUDE_THREADS_REPO_SLUG  github slug          (default: CrackedNut/OpenIntel)
 #   CLAUDE_THREADS_REF        branch/tag to run    (default: main)
 #   CLAUDE_THREADS_REPO       checkout path        (default: ~/code/claude-threads-agent)
 #   GITHUB_TOKEN              for private forks
@@ -21,10 +21,8 @@
 
 set -euo pipefail
 
-SLUG="${CLAUDE_THREADS_REPO_SLUG:-CrackedNut/claude-threads-agent}"
-# Default ref = the branch this deployment line runs on. Flip to `main`
-# once the branch is merged.
-REF="${CLAUDE_THREADS_REF:-claude/thread-spawn-and-channel-replies}"
+SLUG="${CLAUDE_THREADS_REPO_SLUG:-CrackedNut/OpenIntel}"
+REF="${CLAUDE_THREADS_REF:-main}"
 DEST="${CLAUDE_THREADS_REPO:-$HOME/code/claude-threads-agent}"
 BIN_DIR="$HOME/bin"
 CONFIG="$HOME/.config/claude-threads/config.yaml"
@@ -86,7 +84,8 @@ chmod +x "$BIN_DIR/claude-threads"
 # Pin the manager's default ref to whatever this install used.
 sed -i.bak "s|^DEFAULT_REF=.*|DEFAULT_REF=\"\${CLAUDE_THREADS_DEFAULT_REF:-$REF}\"|" "$BIN_DIR/claude-threads" && rm -f "$BIN_DIR/claude-threads.bak"
 cp "$BIN_DIR/claude-threads" "$BIN_DIR/claude-threads-install.sh"
-ok "command installed → $BIN_DIR/claude-threads"
+cp "$BIN_DIR/claude-threads" "$BIN_DIR/openintel"
+ok "command installed → $BIN_DIR/claude-threads (alias: openintel)"
 
 # Make sure $BIN_DIR is on PATH — PREPENDED, so our `claude-threads` wins over
 # any npm/bun global shim of the upstream package.

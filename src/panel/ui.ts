@@ -14,7 +14,7 @@ export const PANEL_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>claude-threads · agent dashboard</title>
+<title>OpenIntel · agent dashboard</title>
 <style>
   :root {
     --paper: #FAF9F5; --card: #FFFFFF; --ink: #1F1E1B; --ink-2: #6E6B63;
@@ -152,7 +152,7 @@ export const PANEL_HTML = `<!doctype html>
 <body>
 <div class="app">
   <aside>
-    <div class="brand"><span class="dot" id="livedot"></span><span class="mark">claude-threads</span></div>
+    <div class="brand"><span class="dot" id="livedot"></span><span class="mark">OpenIntel</span></div>
     <nav id="nav">
       <a href="#/overview" data-page="overview"><span class="ico">◈</span>Overview</a>
       <a href="#/persona" data-page="persona"><span class="ico">✦</span>Persona</a>

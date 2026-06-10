@@ -27,7 +27,7 @@ set -euo pipefail
 
 REPO="${CLAUDE_THREADS_REPO:-$HOME/code/claude-threads-agent}"
 SNAPSHOTS="${CLAUDE_THREADS_SNAPSHOTS:-$HOME/.claude-threads-snapshots}"
-DEFAULT_REF="${CLAUDE_THREADS_DEFAULT_REF:-claude/thread-spawn-and-channel-replies}"
+DEFAULT_REF="${CLAUDE_THREADS_DEFAULT_REF:-main}"
 
 DAEMON_BIN="$REPO/bin/claude-threads-daemon"
 BOT_LOG="$HOME/.claude-threads/logs/bot.log"

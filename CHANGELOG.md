@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.0.0 — OpenIntel
+
+Hard-fork release: the project is now **OpenIntel** (github.com/CrackedNut/OpenIntel), a self-contained chat-driven Claude Code agent platform.
+
+- **!thread spawning** — `!thread <topic> [-history]` typed in an active channel session spawns a parallel thread session with its own Claude instance, optionally seeded with recent channel conversation
+- **Channel-mode hardening** — fixed the in-session reply-target 400 class (channelId used as root_id), typing indicators in channel mode, mention matching against the bot's real account username
+- **Ack reactions** — 👀 on accepted messages, swapped to ✅ when the turn completes
+- **Agent dashboard** — local web panel (127.0.0.1:7777): live sessions w/ cost + Interrupt/Stop, persona (SOUL/DIRECTIVES) editors, projects & skills managers, config editor, per-machine path overrides, live log tail, one-click update & restart
+- **One-liner installer** — curl | bash bootstrap with bun/Claude CLI install, setup wizard, daemon manager (`claude-threads` command) on PATH
+- **Agent content home** — persona/projects/skills resolve per machine (legacy Hermes locations auto-detected; fresh installs get ~/.config/claude-threads/agent)
+- **Skills** — nested `category/skill/SKILL.md` layouts supported in the index and dashboard
+- **Bot log file** — daemon output to ~/.claude-threads/logs/bot.log (rotated) instead of /dev/null
+
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

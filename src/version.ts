@@ -30,7 +30,9 @@ function loadPackageJson(): PackageInfo {
     if (existsSync(candidate)) {
       try {
         const pkg = JSON.parse(readFileSync(candidate, 'utf-8'));
-        if (pkg.name === 'claude-threads') {
+        // Accept the OpenIntel fork name and the upstream name — the name
+        // gate exists only to avoid picking up an unrelated cwd package.json.
+        if (pkg.name === 'openintel' || pkg.name === 'claude-threads') {
           return { version: pkg.version, name: pkg.name };
         }
       } catch {
@@ -40,7 +42,7 @@ function loadPackageJson(): PackageInfo {
   }
 
   // Fallback if package.json not found
-  return { version: 'unknown', name: 'claude-threads' };
+  return { version: 'unknown', name: 'openintel' };
 }
 
 // Cache the result
