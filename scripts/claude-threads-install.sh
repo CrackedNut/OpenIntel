@@ -205,6 +205,18 @@ cmd_rollback() {
   ok "rolled back to $target"
 }
 
+cmd_start()   { start_bot; }
+cmd_stop()    { stop_bot; ok "bot stopped"; }
+cmd_restart() { stop_bot; start_bot; }
+
+cmd_panel() {
+  local url="http://127.0.0.1:7777"
+  log "dashboard: $url"
+  if command -v open >/dev/null 2>&1; then open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$url"
+  fi
+}
+
 cmd_setup() {
   require_repo
   command -v bun >/dev/null 2>&1 || die "bun not found — install from https://bun.sh"
@@ -251,6 +263,8 @@ commands:
   install [ref]      install/upgrade to a git ref (default: $DEFAULT_REF)
                      auto-snapshots current build before clobbering
   setup              interactive config wizard (platforms, tokens, channels)
+  start | stop | restart   control the daemon without rebuilding
+  panel              open the agent dashboard (http://127.0.0.1:7777)
   rollback [label]   restore a snapshot (default: latest)
   snapshot [label]   manually snapshot current dist/
   list               list snapshots, newest first
@@ -275,6 +289,10 @@ main() {
   case "$sub" in
     install)              cmd_install  "$@" ;;
     setup|onboard)         cmd_setup    "$@" ;;
+    start)                 cmd_start ;;
+    stop)                  cmd_stop ;;
+    restart)               cmd_restart ;;
+    panel|dashboard|ui)    cmd_panel ;;
     rollback|revert)      cmd_rollback "$@" ;;
     snapshot|snap)        cmd_snapshot "$@" ;;
     list|ls)              cmd_list ;;

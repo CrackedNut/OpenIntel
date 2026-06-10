@@ -78,18 +78,43 @@ log "installing deps + building..."
 ok "built"
 
 # --- manager script ----------------------------------------------------------
+# Installed as `claude-threads` (the command) + `claude-threads-install.sh`
+# (back-compat name). Same script either way.
 mkdir -p "$BIN_DIR"
-cp "$DEST/scripts/claude-threads-install.sh" "$BIN_DIR/claude-threads-install.sh"
-chmod +x "$BIN_DIR/claude-threads-install.sh"
+cp "$DEST/scripts/claude-threads-install.sh" "$BIN_DIR/claude-threads"
+chmod +x "$BIN_DIR/claude-threads"
 # Pin the manager's default ref to whatever this install used.
-sed -i.bak "s|^DEFAULT_REF=.*|DEFAULT_REF=\"\${CLAUDE_THREADS_DEFAULT_REF:-$REF}\"|" "$BIN_DIR/claude-threads-install.sh" && rm -f "$BIN_DIR/claude-threads-install.sh.bak"
-ok "manager installed → $BIN_DIR/claude-threads-install.sh"
-case ":$PATH:" in *":$BIN_DIR:"*) ;; *) log "NOTE: add $BIN_DIR to your PATH" ;; esac
+sed -i.bak "s|^DEFAULT_REF=.*|DEFAULT_REF=\"\${CLAUDE_THREADS_DEFAULT_REF:-$REF}\"|" "$BIN_DIR/claude-threads" && rm -f "$BIN_DIR/claude-threads.bak"
+cp "$BIN_DIR/claude-threads" "$BIN_DIR/claude-threads-install.sh"
+ok "command installed → $BIN_DIR/claude-threads"
+
+# Make sure $BIN_DIR is on PATH — PREPENDED, so our `claude-threads` wins over
+# any npm/bun global shim of the upstream package.
+PATH_LINE="export PATH=\"\$HOME/bin:\$PATH\""
+add_path_line() {
+  local profile="$1"
+  [[ -f "$profile" ]] || touch "$profile"
+  if ! grep -qF 'PATH="$HOME/bin:$PATH"' "$profile"; then
+    printf '\n# claude-threads command\n%s\n' "$PATH_LINE" >> "$profile"
+    ok "added ~/bin to PATH in $profile (open a new terminal to pick it up)"
+  fi
+}
+case "${SHELL:-}" in
+  */zsh)  add_path_line "$HOME/.zshrc" ;;
+  */bash) add_path_line "$HOME/.bashrc" ;;
+  *)      add_path_line "$HOME/.profile" ;;
+esac
+
+# Warn if a different claude-threads still shadows ours in the CURRENT shell.
+existing="$(command -v claude-threads 2>/dev/null || true)"
+if [[ -n "$existing" && "$existing" != "$BIN_DIR/claude-threads" ]]; then
+  log "NOTE: '$existing' currently shadows this install — open a new terminal, or remove the npm/bun global package (bun remove -g claude-threads)"
+fi
 
 # --- config ------------------------------------------------------------------
 if [[ ! -f "$CONFIG" ]]; then
   log "no config found — launching setup wizard (bot tokens, channel, users)..."
-  bash "$BIN_DIR/claude-threads-install.sh" setup || die "setup did not complete — rerun: claude-threads-install.sh setup"
+  bash "$BIN_DIR/claude-threads" setup || die "setup did not complete — rerun: claude-threads setup"
 else
   ok "existing config found at $CONFIG"
 fi
@@ -98,12 +123,12 @@ fi
 if [[ "${CLAUDE_THREADS_NO_START:-0}" == "1" ]]; then
   log "skipping daemon start (CLAUDE_THREADS_NO_START=1)"
 elif [[ -f "$CONFIG" ]]; then
-  bash "$BIN_DIR/claude-threads-install.sh" install "$REF"
+  bash "$BIN_DIR/claude-threads" install "$REF"
   ok "bot is running"
   echo ""
   echo "  🖥  Agent dashboard:  http://127.0.0.1:7777"
-  echo "  📦  Manage the bot:   claude-threads-install.sh status|install|rollback|setup"
+  echo "  📦  Manage the bot:   claude-threads status|install|setup|restart|panel|rollback"
   echo "  💬  In your channel:  @<botname> hello"
 else
-  log "no config — run \`claude-threads-install.sh setup\` then \`claude-threads-install.sh install\`"
+  log "no config — run \`claude-threads setup\` then \`claude-threads install\`"
 fi
