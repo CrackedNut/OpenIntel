@@ -746,7 +746,25 @@ async function startWithoutDaemon() {
               startedBy: s.startedBy,
               startedAt: s.startedAt.toISOString(),
               isProcessing: s.isProcessing,
+              workingDir: s.workingDir,
+              model: s.usageStats?.modelDisplayName,
+              contextTokens: s.usageStats?.contextTokens,
+              contextWindowSize: s.usageStats?.contextWindowSize,
+              totalCostUSD: s.usageStats?.totalCostUSD,
+              recentEvents: s.recentEvents.slice(-6),
             })),
+          stopSession: async (sessionId) => {
+            const s = session.registry.getAll().find((x) => x.sessionId === sessionId);
+            if (!s) return false;
+            await session.cancelSession(s.threadId, s.startedBy);
+            return true;
+          },
+          interruptSession: async (sessionId) => {
+            const s = session.registry.getAll().find((x) => x.sessionId === sessionId);
+            if (!s) return false;
+            await session.interruptSession(s.threadId, s.startedBy);
+            return true;
+          },
         },
         requestRestart: async () => {
           await prepareForRestart();

@@ -30,6 +30,7 @@ SNAPSHOTS="${CLAUDE_THREADS_SNAPSHOTS:-$HOME/.claude-threads-snapshots}"
 DEFAULT_REF="${CLAUDE_THREADS_DEFAULT_REF:-claude/thread-spawn-and-channel-replies}"
 
 DAEMON_BIN="$REPO/bin/claude-threads-daemon"
+BOT_LOG="$HOME/.claude-threads/logs/bot.log"
 DAEMON_ARGS=(--restart-on-error --no-auto-restart)
 DAEMON_PATTERN="claude-threads-daemon"
 NODE_PATTERN="claude-threads-agent/dist/index.js"
@@ -172,7 +173,14 @@ start_bot() {
   # Unset CLAUDE_THREADS_INTERACTIVE so the bot auto-detects headless mode
   # when running without a TTY (daemon background mode)
   unset CLAUDE_THREADS_INTERACTIVE
-  ( cd "$REPO" && nohup "$DAEMON_BIN" "${DAEMON_ARGS[@]}" >/dev/null 2>&1 & disown ) || true
+  # All daemon + bot output goes to a rotating log file (the dashboard's
+  # Logs tab and \`claude-threads logs\` read it). Crash output included —
+  # /dev/null made failures invisible.
+  mkdir -p "$(dirname "$BOT_LOG")"
+  if [[ -f "$BOT_LOG" ]] && [[ $(wc -c < "$BOT_LOG") -gt 5242880 ]]; then
+    mv "$BOT_LOG" "$BOT_LOG.1"
+  fi
+  ( cd "$REPO" && nohup "$DAEMON_BIN" "${DAEMON_ARGS[@]}" >>"$BOT_LOG" 2>&1 & disown ) || true
   sleep 2
   local pids; pids=$(pids_matching "$DAEMON_PATTERN")
   if [[ -n "$pids" ]]; then
@@ -208,6 +216,11 @@ cmd_rollback() {
 cmd_start()   { start_bot; }
 cmd_stop()    { stop_bot; ok "bot stopped"; }
 cmd_restart() { stop_bot; start_bot; }
+
+cmd_logs() {
+  [[ -f "$BOT_LOG" ]] || die "no log file yet at $BOT_LOG"
+  exec tail -n 100 -f "$BOT_LOG"
+}
 
 cmd_panel() {
   local url="http://127.0.0.1:7777"
@@ -265,6 +278,7 @@ commands:
   setup              interactive config wizard (platforms, tokens, channels)
   start | stop | restart   control the daemon without rebuilding
   panel              open the agent dashboard (http://127.0.0.1:7777)
+  logs               tail the bot log (~/.claude-threads/logs/bot.log)
   rollback [label]   restore a snapshot (default: latest)
   snapshot [label]   manually snapshot current dist/
   list               list snapshots, newest first
@@ -293,6 +307,7 @@ main() {
     stop)                  cmd_stop ;;
     restart)               cmd_restart ;;
     panel|dashboard|ui)    cmd_panel ;;
+    logs|log|tail)         cmd_logs ;;
     rollback|revert)      cmd_rollback "$@" ;;
     snapshot|snap)        cmd_snapshot "$@" ;;
     list|ls)              cmd_list ;;

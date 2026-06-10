@@ -20,9 +20,13 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from 'fs';
 import { join, resolve, dirname } from 'path';
+import { homedir } from 'os';
+import { execSync, spawn } from 'child_process';
 import { CONFIG_PATH, loadConfigWithMigration, saveConfig } from '../config/index.js';
 import { resolveAgentPaths, findSkillEntries } from '../config/agent-paths.js';
 import { PANEL_HTML } from './ui.js';
+
+const BOT_LOG = join(homedir(), '.claude-threads', 'logs', 'bot.log');
 
 /** One safe path segment (no traversal, no separators). */
 function isSafeSegment(seg: string): boolean {
@@ -45,8 +49,32 @@ export interface PanelStatusProvider {
     startedBy: string;
     startedAt: string;
     isProcessing: boolean;
+    workingDir?: string;
+    model?: string;
+    contextTokens?: number;
+    contextWindowSize?: number;
+    totalCostUSD?: number;
+    recentEvents?: Array<{ type: string; timestamp: number; summary: string }>;
   }>;
   getPlatforms(): Array<{ id: string; type: string; displayName: string; connected: boolean }>;
+  /** Stop (kill) a session by sessionId. */
+  stopSession(sessionId: string): Promise<boolean>;
+  /** Interrupt (escape) a session by sessionId without killing it. */
+  interruptSession(sessionId: string): Promise<boolean>;
+}
+
+/** Git info for the running checkout — resolved once, best-effort. */
+function gitInfo(): { branch: string; sha: string } {
+  try {
+    const repoRoot = resolve(dirname(process.argv[1] ?? '.'), '..');
+    const opts = { cwd: repoRoot, encoding: 'utf-8' as const, timeout: 3000 };
+    return {
+      branch: execSync('git rev-parse --abbrev-ref HEAD', opts).trim(),
+      sha: execSync('git rev-parse --short HEAD', opts).trim(),
+    };
+  } catch {
+    return { branch: 'unknown', sha: 'unknown' };
+  }
 }
 
 export interface PanelOptions {
@@ -84,11 +112,14 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
 
   app.get('/', (c) => c.html(PANEL_HTML));
 
+  const git = gitInfo();
+
   // ---- status -------------------------------------------------------------
   app.get('/api/status', (c) => {
     const config = loadConfigWithMigration();
     return c.json({
       version: options.status.version,
+      git,
       pid: process.pid,
       uptimeSeconds: Math.floor(process.uptime()),
       configPath: CONFIG_PATH,
@@ -96,6 +127,45 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
       platforms: options.status.getPlatforms(),
       sessions: options.status.getSessions(),
     });
+  });
+
+  // ---- logs (written by the manager script's start_bot redirect) ----------
+  app.get('/api/logs', (c) => {
+    const lines = Math.min(parseInt(c.req.query('lines') ?? '300', 10) || 300, 2000);
+    const text = readTextOr(BOT_LOG);
+    const all = text.split('\n');
+    return c.json({ path: BOT_LOG, lines: all.slice(-lines) });
+  });
+
+  // ---- session controls ----------------------------------------------------
+  app.post('/api/sessions/:id{.+}/stop', async (c) => {
+    const ok = await options.status.stopSession(c.req.param('id'));
+    options.log('info', `panel: stop session ${c.req.param('id')} → ${ok ? 'ok' : 'not found'}`);
+    return c.json({ ok });
+  });
+  app.post('/api/sessions/:id{.+}/interrupt', async (c) => {
+    const ok = await options.status.interruptSession(c.req.param('id'));
+    options.log('info', `panel: interrupt session ${c.req.param('id')} → ${ok ? 'ok' : 'not found'}`);
+    return c.json({ ok });
+  });
+
+  // ---- one-click update -----------------------------------------------------
+  // Hands off to the manager script (detached — it survives this process
+  // being stopped): snapshot, fetch, checkout, build, restart.
+  app.post('/api/update', (c) => {
+    const manager = [
+      join(homedir(), 'bin', 'claude-threads'),
+      resolve(dirname(process.argv[1] ?? '.'), '..', 'scripts', 'claude-threads-install.sh'),
+    ].find(existsSync);
+    if (!manager) return c.json({ ok: false, error: 'manager script not found' }, 500);
+    options.log('info', `panel: update requested → ${manager} install ${git.branch}`);
+    const child = spawn('bash', [manager, 'install', git.branch], {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    });
+    child.unref();
+    return c.json({ ok: true, note: 'updating — bot rebuilds and restarts, back in ~1-2 min' });
   });
 
   // ---- config.yaml (raw text — YAML comments survive round-trips) ---------

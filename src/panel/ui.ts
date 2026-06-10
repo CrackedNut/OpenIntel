@@ -160,9 +160,11 @@ export const PANEL_HTML = `<!doctype html>
       <a href="#/skills" data-page="skills"><span class="ico">⚒</span>Skills</a>
       <a href="#/config" data-page="config"><span class="ico">⌘</span>Config</a>
       <a href="#/paths" data-page="paths"><span class="ico">⛕</span>Paths</a>
+      <a href="#/logs" data-page="logs"><span class="ico">☰</span>Logs</a>
     </nav>
     <div class="side-foot">
       <div class="side-meta" id="sidemeta">—</div>
+      <button class="restart-btn" style="margin-bottom:8px" onclick="updateBot()">↑ Update &amp; restart</button>
       <button class="restart-btn" onclick="restartBot()">⟳ Restart bot</button>
     </div>
   </aside>
@@ -232,6 +234,21 @@ export const PANEL_HTML = `<!doctype html>
       </div>
     </section>
 
+    <!-- ============ LOGS ============ -->
+    <section data-page="logs" hidden>
+      <div class="page-head"><h1>Logs</h1><p>Live tail of the bot's daemon log (<code id="logs-path">~/.claude-threads/logs/bot.log</code>). Crashes land here too.</p></div>
+      <div class="card">
+        <div class="editor-bar" style="margin: 0 0 12px">
+          <input type="text" id="logs-filter" placeholder="Filter lines…" style="max-width:280px;font-family:var(--sans);font-size:13px;padding:8px 12px" oninput="renderLogs()">
+          <label class="bar-note" style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="logs-follow" checked> follow
+          </label>
+          <span class="bar-note" id="logs-count"></span>
+        </div>
+        <pre id="logs-body" style="background:#1F1E1B;color:#C9C5BA;border-radius:10px;padding:16px;font:11.5px/1.6 var(--mono);max-height:62vh;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-all"></pre>
+      </div>
+    </section>
+
     <!-- ============ PATHS ============ -->
     <section data-page="paths" hidden>
       <div class="page-head"><h1>Paths</h1><p>Where the agent's content lives on this machine. Empty = automatic (legacy locations like Hermes if present, otherwise <code>~/.config/claude-threads/agent/</code>).</p></div>
@@ -282,21 +299,52 @@ function markClean(which) { var b = $(which + '-save'); if (b) { b.textContent =
 
 /* ---------- overview ---------- */
 function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+var openSession = null;
+function fmtTokens(n) { return n == null ? '—' : (n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n)); }
+function sessionDetail(x) {
+  var rows =
+    '<div class="sub" style="margin:8px 0 2px">Model <b>' + esc(x.model || '—') + '</b> · Context <b>' + fmtTokens(x.contextTokens) +
+    (x.contextWindowSize ? ' / ' + fmtTokens(x.contextWindowSize) : '') + '</b> · Cost <b>' +
+    (x.totalCostUSD != null ? '$' + x.totalCostUSD.toFixed(2) : '—') + '</b></div>' +
+    '<div class="sub" style="font-family:var(--mono);font-size:11px">' + esc(x.workingDir || '') + '</div>';
+  var ev = (x.recentEvents || []).slice().reverse().map(function (e) {
+    return '<div class="sub" style="font-family:var(--mono);font-size:11px">· [' + esc(e.type) + '] ' + esc(e.summary) + '</div>';
+  }).join('');
+  return '<div style="padding:4px 4px 12px 4px;border-bottom:1px solid var(--line)">' + rows +
+    (ev ? '<div style="margin-top:8px">' + ev + '</div>' : '') +
+    '<div class="editor-bar" style="margin-top:10px">' +
+    '<button class="btn subtle" onclick="sessionAction(\\'' + esc(x.sessionId) + '\\',\\'interrupt\\')">⏸ Interrupt</button>' +
+    '<button class="btn danger" onclick="sessionAction(\\'' + esc(x.sessionId) + '\\',\\'stop\\')">■ Stop session</button>' +
+    '</div></div>';
+}
+function toggleSession(id) { openSession = openSession === id ? null : id; loadStatus(); }
+function sessionAction(id, action) {
+  if (action === 'stop' && !confirm('Kill this session?')) return;
+  fetch('/api/sessions/' + encodeURIComponent(id).replace(/%3A/gi, ':') + '/' + action, { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { toast(j.ok ? action + ' sent' : 'session not found', !j.ok); setTimeout(loadStatus, 800); });
+}
 function loadStatus() {
   fetch('/api/status').then(function (r) { return r.json(); }).then(function (s) {
     $('livedot').classList.remove('down');
-    $('sidemeta').innerHTML = 'v' + esc(s.version) + ' · pid ' + esc(s.pid) + '<br>up ' + Math.floor(s.uptimeSeconds / 60) + ' min';
+    $('sidemeta').innerHTML = 'v' + esc(s.version) + ' · ' + esc((s.git && s.git.sha) || '') + '<br>' +
+      esc((s.git && s.git.branch) || '') + '<br>pid ' + esc(s.pid) + ' · up ' + Math.floor(s.uptimeSeconds / 60) + ' min';
     var working = s.sessions.filter(function (x) { return x.isProcessing; }).length;
+    var cost = s.sessions.reduce(function (a, x) { return a + (x.totalCostUSD || 0); }, 0);
     $('stats').innerHTML =
       '<div class="stat"><div class="k">Status</div><div class="v"><span class="pill on">● running</span></div></div>' +
-      '<div class="stat"><div class="k">Version</div><div class="v">' + esc(s.version) + '</div></div>' +
+      '<div class="stat"><div class="k">Version</div><div class="v">' + esc(s.version) + ' <small>' + esc((s.git && s.git.sha) || '') + '</small></div></div>' +
       '<div class="stat"><div class="k">Sessions</div><div class="v">' + s.sessions.length + ' <small>(' + working + ' working)</small></div></div>' +
+      '<div class="stat"><div class="k">Session cost</div><div class="v">$' + cost.toFixed(2) + '</div></div>' +
       '<div class="stat"><div class="k">Uptime</div><div class="v">' + Math.floor(s.uptimeSeconds / 60) + '<small> min</small></div></div>';
     $('sessions').innerHTML = s.sessions.length ? s.sessions.map(function (x) {
-      return '<div class="item"><div class="grow"><div class="title">' + esc(x.title || x.sessionId) + '</div>' +
-        '<div class="sub">@' + esc(x.startedBy) + ' · ' + esc(x.platformId) + '</div></div>' +
+      var head = '<div class="item" style="cursor:pointer" onclick="toggleSession(\\'' + esc(x.sessionId) + '\\')">' +
+        '<div class="grow"><div class="title">' + esc(x.title || x.sessionId) + '</div>' +
+        '<div class="sub">@' + esc(x.startedBy) + ' · ' + esc(x.platformId) +
+        (x.totalCostUSD != null ? ' · $' + x.totalCostUSD.toFixed(2) : '') + '</div></div>' +
         '<span class="pill mode">' + esc(x.mode) + '</span>' +
         '<span class="pill ' + (x.isProcessing ? 'busy">working' : 'on">idle') + '</span></div>';
+      return head + (openSession === x.sessionId ? sessionDetail(x) : '');
     }).join('') : '<div class="empty"><div class="big">No active sessions</div>Mention the bot in your channel to start one.</div>';
     $('platforms').innerHTML = s.platforms.map(function (p) {
       return '<div class="item"><div class="grow"><div class="title">' + esc(p.displayName) + '</div>' +
@@ -308,6 +356,34 @@ function loadStatus() {
     $('livedot').classList.add('down');
     $('sidemeta').textContent = 'bot unreachable — restarting?';
   });
+}
+
+/* ---------- logs ---------- */
+var logLines = [];
+function loadLogs() {
+  if ((location.hash || '').indexOf('logs') < 0) return;
+  fetch('/api/logs?lines=500').then(function (r) { return r.json(); }).then(function (j) {
+    logLines = j.lines;
+    $('logs-path').textContent = j.path;
+    renderLogs();
+  });
+}
+function renderLogs() {
+  var q = ($('logs-filter').value || '').toLowerCase();
+  var shown = q ? logLines.filter(function (l) { return l.toLowerCase().indexOf(q) >= 0; }) : logLines;
+  $('logs-count').textContent = shown.length + ' lines';
+  var el = $('logs-body');
+  el.textContent = shown.join('\\n');
+  if ($('logs-follow').checked) el.scrollTop = el.scrollHeight;
+}
+
+/* ---------- update ---------- */
+function updateBot() {
+  if (!confirm('Pull the latest branch, rebuild, and restart? Takes ~1-2 minutes; sessions persist and resume.')) return;
+  fetch('/api/update', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (j) {
+    toast(j.ok ? 'Updating — back in a minute or two' : 'Update failed: ' + (j.error || ''), !j.ok);
+    if (j.ok) { $('livedot').classList.add('down'); setTimeout(function () { location.reload(); }, 75000); }
+  }).catch(function () { toast('Update kicked off — bot going down to rebuild'); });
 }
 
 /* ---------- persona ---------- */
@@ -461,6 +537,8 @@ document.addEventListener('keydown', function (ev) {
 
 route();
 loadStatus(); setInterval(loadStatus, 5000);
+loadLogs(); setInterval(loadLogs, 3000);
+window.addEventListener('hashchange', loadLogs);
 loadPersona(); loadConfig(); loadEntries('projects'); loadEntries('skills'); loadPaths();
 </script>
 </body>
