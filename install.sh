@@ -2,7 +2,7 @@
 # claude-threads one-liner installer — get a chat-driven Claude Code agent
 # running on a fresh machine:
 #
-#   curl -fsSL https://raw.githubusercontent.com/CrackedNut/claude-threads-agent/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/CrackedNut/claude-threads-agent/claude/thread-spawn-and-channel-replies/install.sh | bash
 #
 # What it does:
 #   1. Installs bun if missing (git must already exist)
@@ -22,7 +22,9 @@
 set -euo pipefail
 
 SLUG="${CLAUDE_THREADS_REPO_SLUG:-CrackedNut/claude-threads-agent}"
-REF="${CLAUDE_THREADS_REF:-main}"
+# Default ref = the branch this deployment line runs on. Flip to `main`
+# once the branch is merged.
+REF="${CLAUDE_THREADS_REF:-claude/thread-spawn-and-channel-replies}"
 DEST="${CLAUDE_THREADS_REPO:-$HOME/code/claude-threads-agent}"
 BIN_DIR="$HOME/bin"
 CONFIG="$HOME/.config/claude-threads/config.yaml"
