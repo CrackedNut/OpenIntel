@@ -17,15 +17,12 @@
  * Default skills dir: `~/.claude/skills`. Missing dir → empty string.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
-import { join, resolve } from 'path';
-import { homedir } from 'os';
+import { existsSync, readFileSync, statSync } from 'fs';
 import type { SkillsIndexConfig } from '../config/types.js';
 import { createLogger } from '../utils/logger.js';
+import { resolveSkillsDir, findSkillEntries } from '../config/agent-paths.js';
 
 const log = createLogger('skills-index');
-
-const DEFAULT_SKILLS_DIR = join(homedir(), '.claude', 'skills');
 
 interface CacheEntry {
   mtimeMs: number;
@@ -92,11 +89,6 @@ function readSkillDescription(skillMdPath: string): string | null {
   }
 }
 
-function resolvePath(p: string): string {
-  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
-  return resolve(p);
-}
-
 /**
  * Build the skills index block. Empty string when disabled, when the skills
  * dir is missing, or when no skill exposes a description — callers can treat
@@ -105,26 +97,20 @@ function resolvePath(p: string): string {
 export function buildSkillsIndexText(config?: SkillsIndexConfig): string {
   if (config?.enabled === false) return '';
 
-  const skillsDir = config?.skillsDir ? resolvePath(config.skillsDir) : DEFAULT_SKILLS_DIR;
-  if (!existsSync(skillsDir)) return '';
-
-  let entries: string[];
-  try {
-    entries = readdirSync(skillsDir, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      .map(e => e.name)
-      .sort();
-  } catch (err) {
-    log.debug(`Failed to list skills dir ${skillsDir}: ${(err as Error).message}`);
+  // Shared resolution + nested scan: supports both flat <skill>/SKILL.md
+  // and categorized <category>/<skill>/SKILL.md layouts. See agent-paths.ts.
+  const skillsDir = resolveSkillsDir(config);
+  const entries = findSkillEntries(skillsDir);
+  if (entries.length === 0) {
+    log.debug(`No skills found under ${skillsDir}`);
     return '';
   }
 
   const lines: string[] = [];
-  for (const name of entries) {
-    const skillMd = join(skillsDir, name, 'SKILL.md');
-    const description = readSkillDescription(skillMd);
+  for (const entry of entries) {
+    const description = readSkillDescription(entry.mdPath);
     if (!description) continue;
-    lines.push(`- **${name}** — ${description}`);
+    lines.push(`- **${entry.name}** — ${description}`);
   }
   if (lines.length === 0) return '';
 

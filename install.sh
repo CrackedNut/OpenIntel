@@ -111,6 +111,29 @@ if [[ -n "$existing" && "$existing" != "$BIN_DIR/claude-threads" ]]; then
   log "NOTE: '$existing' currently shadows this install — open a new terminal, or remove the npm/bun global package (bun remove -g claude-threads)"
 fi
 
+# --- agent content home --------------------------------------------------------
+# Fresh machines won't have Hermes/agent-memory — seed a self-owned content
+# dir that the dashboard's Persona/Projects/Skills tabs (and the bot's
+# system-prompt builders) fall back to. Existing legacy locations always win.
+AGENT_HOME="$HOME/.config/claude-threads/agent"
+if [[ ! -d "$AGENT_HOME" ]]; then
+  mkdir -p "$AGENT_HOME/projects" "$AGENT_HOME/skills"
+  cat > "$AGENT_HOME/SOUL.md" <<'SOUL'
+# Soul
+
+Who this agent is: name, voice, and how it talks to your team.
+Edit me in the dashboard (Persona tab) — new sessions pick changes up automatically.
+SOUL
+  cat > "$AGENT_HOME/DIRECTIVES.md" <<'DIRECTIVES'
+# Directives
+
+Hard behavioral rules the agent must always follow, e.g.:
+- Never push to main — feature branches only.
+- Ask before destructive actions.
+DIRECTIVES
+  ok "seeded agent content → $AGENT_HOME (edit via the dashboard)"
+fi
+
 # --- config ------------------------------------------------------------------
 if [[ ! -f "$CONFIG" ]]; then
   log "no config found — launching setup wizard (bot tokens, channel, users)..."

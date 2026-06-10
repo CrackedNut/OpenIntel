@@ -6,7 +6,9 @@
  *   - edit config.yaml (platforms, tokens, modes) and restart to apply
  *   - edit the agent persona files (SOUL.md / DIRECTIVES.md)
  *   - manage the projects index (<projectsIndexDir>/<name>/description.md)
- *   - manage skills (<skillsDir>/<name>/SKILL.md)
+ *   - manage skills (flat <skill>/SKILL.md or nested <category>/<skill>/SKILL.md)
+ *   - change where soul/directives/projects/skills live (Paths tab —
+ *     persisted into config.yaml via the shared agent-paths resolution)
  *   - restart the bot (exit 42 → daemon restarts it; sessions resume)
  *
  * SECURITY MODEL: localhost-only single-operator tool. No auth — anything
@@ -17,23 +19,20 @@
 import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, rmSync } from 'fs';
-import { join, resolve } from 'path';
-import { homedir } from 'os';
-import { CONFIG_PATH, loadConfigWithMigration, type Config } from '../config/index.js';
+import { join, resolve, dirname } from 'path';
+import { CONFIG_PATH, loadConfigWithMigration, saveConfig } from '../config/index.js';
+import { resolveAgentPaths, findSkillEntries } from '../config/agent-paths.js';
 import { PANEL_HTML } from './ui.js';
 
-const DEFAULT_SOUL_PATH = join(homedir(), '.hermes', 'SOUL.md');
-const DEFAULT_DIRECTIVES_PATH = join(homedir(), '.hermes', 'DIRECTIVES.md');
-const DEFAULT_PROJECTS_DIR = join(homedir(), 'agent-memory', 'projects');
-const DEFAULT_SKILLS_DIR = join(homedir(), '.claude', 'skills');
-
-/** Reject names that could escape their parent directory. */
-function isSafeName(name: string): boolean {
-  return /^[\w][\w.-]{0,127}$/.test(name);
+/** One safe path segment (no traversal, no separators). */
+function isSafeSegment(seg: string): boolean {
+  return /^[\w][\w.-]{0,127}$/.test(seg);
 }
 
-function resolveTilde(p: string): string {
-  return p.startsWith('~') ? join(homedir(), p.slice(1)) : resolve(p);
+/** Skill names may be "name" or "category/name"; each segment must be safe. */
+function isSafeSkillName(name: string): boolean {
+  const parts = name.split('/');
+  return parts.length >= 1 && parts.length <= 2 && parts.every(isSafeSegment);
 }
 
 export interface PanelStatusProvider {
@@ -58,18 +57,6 @@ export interface PanelOptions {
   log: (level: 'info' | 'warn' | 'error', message: string) => void;
 }
 
-/** Resolve the editable file paths from the live config (falls back to defaults). */
-function resolvePaths(config: Config | null) {
-  const persona = config?.agentPersona;
-  const skills = config?.skillsIndex;
-  return {
-    soul: resolveTilde(persona?.soulPath ?? DEFAULT_SOUL_PATH),
-    directives: resolveTilde(persona?.directivesPath ?? DEFAULT_DIRECTIVES_PATH),
-    projectsDir: resolveTilde(persona?.projectsIndexDir ?? DEFAULT_PROJECTS_DIR),
-    skillsDir: resolveTilde(skills?.skillsDir ?? DEFAULT_SKILLS_DIR),
-  };
-}
-
 function readTextOr(path: string, fallback = ''): string {
   try {
     return existsSync(path) ? readFileSync(path, 'utf-8') : fallback;
@@ -78,13 +65,13 @@ function readTextOr(path: string, fallback = ''): string {
   }
 }
 
-/** List <dir>/<name>/<file> entries as {name, content}. */
-function listMdEntries(dir: string, file: string): Array<{ name: string; content: string }> {
+/** List <dir>/<name>/description.md entries as {name, content}. */
+function listProjectEntries(dir: string): Array<{ name: string; content: string }> {
   if (!existsSync(dir)) return [];
   try {
     return readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && isSafeName(e.name))
-      .map((e) => ({ name: e.name, content: readTextOr(join(dir, e.name, file)) }))
+      .filter((e) => e.isDirectory() && isSafeSegment(e.name))
+      .map((e) => ({ name: e.name, content: readTextOr(join(dir, e.name, 'description.md')) }))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
@@ -100,13 +87,12 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   // ---- status -------------------------------------------------------------
   app.get('/api/status', (c) => {
     const config = loadConfigWithMigration();
-    const paths = resolvePaths(config);
     return c.json({
       version: options.status.version,
       pid: process.pid,
       uptimeSeconds: Math.floor(process.uptime()),
       configPath: CONFIG_PATH,
-      paths,
+      paths: resolveAgentPaths(config),
       platforms: options.status.getPlatforms(),
       sessions: options.status.getSessions(),
     });
@@ -130,14 +116,54 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
     return c.json({ ok: true, note: 'saved — restart the bot to apply' });
   });
 
+  // ---- paths (persisted into config.yaml) ----------------------------------
+  app.get('/api/paths', (c) => {
+    const config = loadConfigWithMigration();
+    return c.json({
+      resolved: resolveAgentPaths(config),
+      configured: {
+        soulPath: config?.agentPersona?.soulPath ?? null,
+        directivesPath: config?.agentPersona?.directivesPath ?? null,
+        projectsIndexDir: config?.agentPersona?.projectsIndexDir ?? null,
+        skillsDir: config?.skillsIndex?.skillsDir ?? null,
+      },
+    });
+  });
+  app.put('/api/paths', async (c) => {
+    const config = loadConfigWithMigration();
+    if (!config) return c.json({ ok: false, error: 'no config to update' }, 400);
+    let body: Record<string, unknown>;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ ok: false, error: 'expected JSON body' }, 400);
+    }
+    const pick = (key: string): string | undefined => {
+      const v = body[key];
+      return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+    };
+    config.agentPersona = {
+      ...config.agentPersona,
+      soulPath: pick('soulPath'),
+      directivesPath: pick('directivesPath'),
+      projectsIndexDir: pick('projectsIndexDir'),
+    };
+    config.skillsIndex = { ...config.skillsIndex, skillsDir: pick('skillsDir') };
+    // NOTE: saveConfig() re-serializes the YAML, so hand-written comments in
+    // config.yaml are dropped. The Config tab edits raw text when that matters.
+    saveConfig(config);
+    options.log('info', 'panel: agent paths updated in config.yaml');
+    return c.json({ ok: true, resolved: resolveAgentPaths(config) });
+  });
+
   // ---- persona files -------------------------------------------------------
   for (const key of ['soul', 'directives'] as const) {
     app.get(`/api/persona/${key}`, (c) => {
-      const paths = resolvePaths(loadConfigWithMigration());
+      const paths = resolveAgentPaths(loadConfigWithMigration());
       return c.json({ path: paths[key], content: readTextOr(paths[key]) });
     });
     app.put(`/api/persona/${key}`, async (c) => {
-      const paths = resolvePaths(loadConfigWithMigration());
+      const paths = resolveAgentPaths(loadConfigWithMigration());
       const content = await c.req.text();
       mkdirSync(resolve(paths[key], '..'), { recursive: true });
       writeFileSync(paths[key], content);
@@ -148,13 +174,13 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
 
   // ---- projects index ------------------------------------------------------
   app.get('/api/projects', (c) => {
-    const { projectsDir } = resolvePaths(loadConfigWithMigration());
-    return c.json({ dir: projectsDir, entries: listMdEntries(projectsDir, 'description.md') });
+    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
+    return c.json({ dir: projectsDir, entries: listProjectEntries(projectsDir) });
   });
   app.put('/api/projects/:name', async (c) => {
     const name = c.req.param('name');
-    if (!isSafeName(name)) return c.json({ ok: false, error: 'invalid project name' }, 400);
-    const { projectsDir } = resolvePaths(loadConfigWithMigration());
+    if (!isSafeSegment(name)) return c.json({ ok: false, error: 'invalid project name' }, 400);
+    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
     const dir = join(projectsDir, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'description.md'), await c.req.text());
@@ -163,33 +189,37 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
   });
   app.delete('/api/projects/:name', (c) => {
     const name = c.req.param('name');
-    if (!isSafeName(name)) return c.json({ ok: false, error: 'invalid project name' }, 400);
-    const { projectsDir } = resolvePaths(loadConfigWithMigration());
+    if (!isSafeSegment(name)) return c.json({ ok: false, error: 'invalid project name' }, 400);
+    const { projectsDir } = resolveAgentPaths(loadConfigWithMigration());
     const target = join(projectsDir, name, 'description.md');
     if (existsSync(target)) rmSync(target);
     options.log('info', `panel: project "${name}" description removed`);
     return c.json({ ok: true });
   });
 
-  // ---- skills ----------------------------------------------------------------
+  // ---- skills (supports "name" and "category/name") -------------------------
   app.get('/api/skills', (c) => {
-    const { skillsDir } = resolvePaths(loadConfigWithMigration());
-    return c.json({ dir: skillsDir, entries: listMdEntries(skillsDir, 'SKILL.md') });
+    const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const entries = findSkillEntries(skillsDir).map((e) => ({
+      name: e.name,
+      content: readTextOr(e.mdPath),
+    }));
+    return c.json({ dir: skillsDir, entries });
   });
-  app.put('/api/skills/:name', async (c) => {
+  app.put('/api/skills/:name{.+}', async (c) => {
     const name = c.req.param('name');
-    if (!isSafeName(name)) return c.json({ ok: false, error: 'invalid skill name' }, 400);
-    const { skillsDir } = resolvePaths(loadConfigWithMigration());
-    const dir = join(skillsDir, name);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, 'SKILL.md'), await c.req.text());
+    if (!isSafeSkillName(name)) return c.json({ ok: false, error: 'invalid skill name' }, 400);
+    const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
+    const mdPath = join(skillsDir, name, 'SKILL.md');
+    mkdirSync(dirname(mdPath), { recursive: true });
+    writeFileSync(mdPath, await c.req.text());
     options.log('info', `panel: skill "${name}" saved`);
     return c.json({ ok: true });
   });
-  app.delete('/api/skills/:name', (c) => {
+  app.delete('/api/skills/:name{.+}', (c) => {
     const name = c.req.param('name');
-    if (!isSafeName(name)) return c.json({ ok: false, error: 'invalid skill name' }, 400);
-    const { skillsDir } = resolvePaths(loadConfigWithMigration());
+    if (!isSafeSkillName(name)) return c.json({ ok: false, error: 'invalid skill name' }, 400);
+    const { skillsDir } = resolveAgentPaths(loadConfigWithMigration());
     const target = join(skillsDir, name, 'SKILL.md');
     if (existsSync(target)) rmSync(target);
     options.log('info', `panel: skill "${name}" removed`);

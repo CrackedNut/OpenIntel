@@ -25,16 +25,12 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
-import { join, resolve } from 'path';
-import { homedir } from 'os';
+import { join } from 'path';
 import type { AgentPersonaConfig } from '../config/types.js';
 import { createLogger } from '../utils/logger.js';
+import { resolveSoulPath, resolveDirectivesPath, resolveProjectsDir } from '../config/agent-paths.js';
 
 const log = createLogger('agent-persona');
-
-const DEFAULT_SOUL_PATH = join(homedir(), '.hermes', 'SOUL.md');
-const DEFAULT_DIRECTIVES_PATH = join(homedir(), '.hermes', 'DIRECTIVES.md');
-const DEFAULT_PROJECTS_DIR = join(homedir(), 'agent-memory', 'projects');
 
 interface CacheEntry {
   mtimeMs: number;
@@ -89,11 +85,6 @@ function buildProjectsIndex(dir: string): string | null {
   }
 }
 
-function resolvePath(p: string): string {
-  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
-  return resolve(p);
-}
-
 /**
  * Assemble the persona text. Returns an empty string when the feature is
  * disabled or every layer is missing — callers can treat the result as
@@ -105,13 +96,12 @@ function resolvePath(p: string): string {
 export function buildAgentPersonaText(config?: AgentPersonaConfig): string {
   if (!config || config.enabled === false) return '';
 
-  const soulPath = config.soulPath ? resolvePath(config.soulPath) : DEFAULT_SOUL_PATH;
-  const directivesPath = config.directivesPath
-    ? resolvePath(config.directivesPath)
-    : DEFAULT_DIRECTIVES_PATH;
-  const projectsDir = config.projectsIndexDir
-    ? resolvePath(config.projectsIndexDir)
-    : DEFAULT_PROJECTS_DIR;
+  // Shared resolution (config → legacy locations → claude-threads agent
+  // home) — keeps the dashboard's Paths tab and the actual session prompt
+  // in agreement. See src/config/agent-paths.ts.
+  const soulPath = resolveSoulPath(config);
+  const directivesPath = resolveDirectivesPath(config);
+  const projectsDir = resolveProjectsDir(config);
 
   const parts: string[] = [];
 
