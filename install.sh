@@ -115,26 +115,23 @@ if [[ -n "$existing" && "$existing" != "$BIN_DIR/claude-threads" ]]; then
 fi
 
 # --- agent content home --------------------------------------------------------
-# Fresh machines won't have Hermes/agent-memory — seed a self-owned content
-# dir that the dashboard's Persona/Projects/Skills tabs (and the bot's
-# system-prompt builders) fall back to. Existing legacy locations always win.
+# Fresh machines won't have an agent identity yet — seed the full starter kit
+# from the repo's versioned templates: a generic SOUL.md, DIRECTIVES.md with
+# the memory system (daily notes + per-project playbook/scratch), the projects
+# index with an example project, daily-notes dir, and an empty skills dir.
+# Everything is editable afterwards in the dashboard. Existing legacy
+# locations (Hermes, agent-memory) always win over these defaults.
 AGENT_HOME="$HOME/.config/claude-threads/agent"
 if [[ ! -d "$AGENT_HOME" ]]; then
-  mkdir -p "$AGENT_HOME/projects" "$AGENT_HOME/skills"
-  cat > "$AGENT_HOME/SOUL.md" <<'SOUL'
-# Soul
-
-Who this agent is: name, voice, and how it talks to your team.
-Edit me in the dashboard (Persona tab) — new sessions pick changes up automatically.
-SOUL
-  cat > "$AGENT_HOME/DIRECTIVES.md" <<'DIRECTIVES'
-# Directives
-
-Hard behavioral rules the agent must always follow, e.g.:
-- Never push to main — feature branches only.
-- Ask before destructive actions.
-DIRECTIVES
-  ok "seeded agent content → $AGENT_HOME (edit via the dashboard)"
+  mkdir -p "$AGENT_HOME"
+  if [[ -d "$DEST/templates/agent" ]]; then
+    cp -R "$DEST/templates/agent/." "$AGENT_HOME/"
+  fi
+  # Ensure the full skeleton exists even if templates were missing
+  mkdir -p "$AGENT_HOME/projects" "$AGENT_HOME/skills" "$AGENT_HOME/memory/daily"
+  [[ -f "$AGENT_HOME/SOUL.md" ]] || echo "# Soul" > "$AGENT_HOME/SOUL.md"
+  [[ -f "$AGENT_HOME/DIRECTIVES.md" ]] || echo "# Directives" > "$AGENT_HOME/DIRECTIVES.md"
+  ok "seeded agent identity + memory system → $AGENT_HOME (edit via the dashboard)"
 fi
 
 # --- config ------------------------------------------------------------------
