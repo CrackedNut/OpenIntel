@@ -22,7 +22,7 @@ Only the latest version receives security updates.
 
 # Authorization Model
 
-This section documents the authorization and security model for claude-threads.
+This section documents the authorization and security model for OpenIntel.
 
 ## Authorization Layers
 

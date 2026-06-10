@@ -5,8 +5,8 @@ Contributions are welcome! Here's how to help:
 ## Quick Start
 
 ```bash
-git clone https://github.com/anneschuth/claude-threads.git
-cd claude-threads
+git clone https://github.com/CrackedNut/OpenIntel.git
+cd OpenIntel
 bun install
 bun run dev
 ```

@@ -18,16 +18,16 @@ curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.s
 
 On a fresh machine this installs bun + the Claude Code CLI if missing, clones and builds OpenIntel, runs an interactive wizard for your bot token/channel, seeds an editable agent persona, starts the daemon, and prints the dashboard URL. Each device gets its own agent for its own project.
 
-Already installed? Manage everything with the `claude-threads` command:
+Already installed? Manage everything with the `openintel` command (alias: `claude-threads`):
 
 ```bash
-claude-threads status      # daemon, branch/commit, version
-claude-threads panel       # open the dashboard
-claude-threads logs        # tail the bot log
-claude-threads setup       # reconfigure (tokens, channels, users)
-claude-threads install     # pull latest, rebuild, restart
-claude-threads rollback    # restore the previous build
-claude-threads start|stop|restart
+openintel status      # daemon, branch/commit, version
+openintel panel       # open the dashboard
+openintel logs        # tail the bot log
+openintel setup       # reconfigure (tokens, channels, users)
+openintel install     # pull latest, rebuild, restart
+openintel rollback    # restore the previous build
+openintel start|stop|restart
 ```
 
 ## The Dashboard
@@ -60,7 +60,7 @@ Spin up **parallel thread sessions** (each with its own Claude instance) without
 
 The bot 👀-reacts when it accepts your message and flips it to ✅ when the turn completes, shows typing indicators, and streams output live.
 
-### Features inherited & extended from claude-threads
+### Core features
 
 - **Real-time streaming** of Claude's responses, tool use, diffs, and task lists into chat
 - **Multi-platform** — multiple Mattermost and Slack workspaces simultaneously
@@ -133,7 +133,9 @@ bun test          # ~2,600 unit tests
 bun run lint
 ```
 
-Deployment on a managed machine is via `claude-threads install [ref]` — it snapshots the current build first, so `claude-threads rollback` always works.
+Deployment on a managed machine is via `openintel install [ref]` — it snapshots the current build first, so `openintel rollback` always works.
+
+> Config and data live under `~/.config/claude-threads/` and `~/.claude-threads/` — the legacy directory names are kept so existing deployments survive upgrades.
 
 ## Credits & License
 

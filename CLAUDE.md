@@ -1,8 +1,8 @@
-# Claude Code Instructions for claude-threads
+# Claude Code Instructions for OpenIntel
 
 ## What This Project Does
 
-This is a multi-platform bot that lets users interact with Claude Code through chat platforms. When someone @mentions the bot in a channel, it spawns a Claude Code CLI session in a configured working directory and streams all output to a thread. The user can continue the conversation by replying in the thread.
+OpenIntel is a multi-platform agent bot that lets users interact with Claude Code through chat platforms. When someone @mentions the bot in a channel, it spawns a Claude Code CLI session in a configured working directory and streams all output to a thread. The user can continue the conversation by replying in the thread.
 
 **Currently Supported Platforms:**
 - Mattermost (full support)
@@ -26,7 +26,7 @@ This is a multi-platform bot that lets users interact with Claude Code through c
 
 ## Contribution Conventions
 
-- **Pull request titles and bodies are written in English.** This is an open-source project with an international audience, so PRs stay in English even though commit messages may be in Dutch. Keep the CHANGELOG in English as well.
+- **Pull request titles, bodies, commit messages, and the CHANGELOG are written in English.**
 
 ## Architecture Overview
 
@@ -88,7 +88,7 @@ This is a multi-platform bot that lets users interact with Claude Code through c
 
 ## Multi-Platform Support
 
-**Architecture**: claude-threads supports connecting to multiple chat platforms simultaneously through a platform abstraction layer.
+**Architecture**: OpenIntel supports connecting to multiple chat platforms simultaneously through a platform abstraction layer.
 
 **Currently Supported**:
 - ✅ Mattermost (fully implemented)
@@ -386,7 +386,7 @@ CHANGELOG.
 
 ### Claude CLI Version Requirements
 
-claude-threads requires a compatible version of the Claude CLI (`@anthropic-ai/claude-code`).
+OpenIntel requires a compatible version of the Claude CLI (`@anthropic-ai/claude-code`).
 
 **Compatible versions:** `>=2.0.74 <2.2.0` (covers the full 2.1.x line; latest verified: 2.1.116)
 
@@ -445,138 +445,57 @@ bun run test:integration
 
 ## Testing Locally
 
-1. Create config: `~/.config/claude-threads/config.yaml` (or run `claude-threads` for interactive setup)
+1. Create config: `~/.config/claude-threads/config.yaml` (or run `openintel setup`, or use the dashboard's Platforms tab)
 2. Build: `bun run build`
 3. Run: `bun start` (or `DEBUG=1 bun start` for verbose output)
 4. In Mattermost, @mention the bot: `@botname write "hello" to test.txt`
 5. Watch the permission prompt appear, react with 👍
 6. Verify file was created
 
-## Publishing a New Version
+## Releasing & Deploying (OpenIntel)
 
-Releases are automated via GitHub Actions. When you create a GitHub release, it automatically publishes to the npm registry.
+OpenIntel is NOT published to npm — it deploys from this git repo. The
+upstream `claude-threads` npm package is a different project; never run
+`npm/bun install -g claude-threads` expecting OpenIntel.
 
-### Quick Release Flow (with open PRs)
-
-When there are open PRs to merge before releasing:
-
-```bash
-# 1. List open PRs and verify checks pass before merging
-gh pr list --state open
-gh pr checks <PR_NUMBER>  # Ensure all checks pass!
-
-# 2. Merge PRs (squash merge, delete branches)
-gh pr merge <PR_NUMBER> --squash --delete-branch
-# Repeat for each PR (ignore worktree branch deletion errors)
-
-# 3. Pull merged changes
-git pull
-
-# 4. Remove any deprecated files if needed
-rm <file> && git add -A
-
-# 5. Update CHANGELOG.md with new version and all merged PR changes
-# Use format: **Feature/Fix name** - Description (#PR_NUMBER)
-
-# 6. Commit changelog
-git add CHANGELOG.md && git commit -m "Update CHANGELOG for vX.Y.Z"
-
-# 7. Bump version
-npm version patch --no-git-tag-version  # 0.47.0 → 0.47.1 (fixes only)
-npm version minor --no-git-tag-version  # 0.47.0 → 0.48.0 (new features)
-npm version major --no-git-tag-version  # 0.47.0 → 1.0.0 (breaking changes)
-
-# 8. Commit and tag
-git add package.json package-lock.json && git commit -m "X.Y.Z" && git tag vX.Y.Z
-
-# 9. Push to GitHub with tags
-git push && git push --tags
-
-# 10. Create GitHub release (triggers automatic npm publish)
-gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
-```
-
-### Manual Release Flow (no PRs to merge)
-
-**IMPORTANT: Always test locally before pushing!**
-```bash
-# 0. Build and run locally to test
-bun run build && bun start
-# Test in Mattermost: https://digilab.overheid.nl/chat/digilab/channels/annes-claude-code-sessies
-# Kill the server when done testing (Ctrl+C)
-```
+### Release flow
 
 ```bash
 # 1. Update CHANGELOG.md with the new version
-
-# 2. Commit the changelog
-git add CHANGELOG.md && git commit -m "Update CHANGELOG for vX.Y.Z"
-
-# 3. Bump version
-npm version patch --no-git-tag-version  # then commit and tag manually
-
-# 4. Commit and tag
-git add package.json package-lock.json && git commit -m "X.Y.Z" && git tag vX.Y.Z
-
-# 5. Push to GitHub with tags
+# 2. Bump the version
+npm version minor --no-git-tag-version   # or patch/major
+# 3. Commit, tag, push
+git add -A && git commit -m "X.Y.Z" && git tag vX.Y.Z
 git push && git push --tags
-
-# 6. Create GitHub release (this triggers automatic npm publish)
-gh release create vX.Y.Z --title "vX.Y.Z" --generate-notes
 ```
 
-**GitHub Actions Workflow:** `.github/workflows/publish.yml`
-- Triggered on: GitHub release published
-- Builds TypeScript and publishes to the npm registry
-- Requires `NPM_TOKEN` secret in repository settings
+### Deploy flow
 
-**⚠️ IMPORTANT: NEVER modify the workflow trigger!**
-- The workflow MUST trigger on `release: types: [published]`
-- NEVER change it to trigger on tag pushes
-- The user creates releases manually via `gh release create`
-- This is the preferred release workflow - do not change it
+Every managed machine runs from a source checkout, supervised by the
+manager script (`openintel` / `claude-threads` on PATH):
 
-**Token Setup (already configured):**
-- Classic Automation token stored in GitHub repository secrets as `NPM_TOKEN`
-- To update: https://github.com/anneschuth/claude-threads/settings/secrets/actions
+```bash
+openintel install [ref]   # snapshot current build → fetch → checkout → build → restart
+openintel rollback        # restore the previous snapshot
+openintel status          # what's running, which commit
+openintel logs            # tail ~/.claude-threads/logs/bot.log
+```
 
-## Testing Deployed Versions in Mattermost
+The dashboard's **Update & restart** button runs the same install flow
+detached. Sessions persist across restarts and resume automatically.
 
-After deploying a new version, test it in the Mattermost channel:
-https://digilab.overheid.nl/chat/digilab/channels/annes-claude-code-sessies
+### Testing a deployment
 
-### Basic Verification
-1. **Check version**: `@minion-of-anne what version are you running?`
-   - Bot should respond with version number and summary of recent changes
-   - Verify the session header shows correct version
-
-### Testing Permission System
-1. **Start a new session** (existing sessions keep their original permission mode)
-2. **Enable interactive permissions**: `!permissions interactive`
-   - Should see: "🔐 **Interactive permissions enabled** ... *Claude Code restarted with permission prompts*"
-   - Session header should update to show "Permissions: Interactive"
-3. **Test permission prompt**: `@minion-of-anne write "test" to /tmp/perm-test.txt`
-   - Should see a permission prompt with reaction options: 👍 ✅ 👎
-   - React with 👍 to approve
-   - File should be written after approval
-
-### Testing Other Features
-- **Session collaboration**: `!invite @username` / `!kick @username`
-- **Directory change**: `!cd /some/path` (restarts Claude CLI)
-- **Interrupt**: `!escape` or ⏸️ reaction (interrupts without killing)
-- **Cancel**: `!stop` or ❌/🛑 reaction (kills the session)
-- **Plan approval**: When Claude presents a plan, react with 👍/👎
-- **Question answering**: When Claude asks questions, react with number emojis
-
-### Verifying Specific Bug Fixes
-When testing a specific fix:
-1. Reproduce the original bug scenario
-2. Verify the fix works as expected
-3. Check for regressions in related functionality
+1. `openintel status` — confirm branch/commit and that the daemon is up
+2. Dashboard Overview — platforms connected, sessions resumed
+3. In the channel: mention the bot, then `!thread test topic` to verify
+   thread spawning; `!help` to verify command routing
+4. When testing a specific fix: reproduce the original bug scenario,
+   verify the fix, and check for regressions in related functionality
 
 ## Data Retention & Security
 
-claude-threads stores sensitive session data locally. The following retention policies and security measures apply:
+OpenIntel stores sensitive session data locally. The following retention policies and security measures apply:
 
 ### Data Storage Locations
 
@@ -646,10 +565,10 @@ Claude Code stores all conversation history on disk, which is invaluable for deb
 tail -20 ~/.claude/history.jsonl | jq -r '.cwd + " " + .name'
 
 # Find sessions for this project
-ls ~/.claude/projects/-Users-anneschuth-mattermost-claude-code/
+ls ~/.claude/projects/-Users-you-code-claude-threads-agent/
 
 # View a specific session's conversation
-cat ~/.claude/projects/-Users-anneschuth-mattermost-claude-code/SESSION_ID.jsonl | jq .
+cat ~/.claude/projects/-Users-you-code-claude-threads-agent/SESSION_ID.jsonl | jq .
 ```
 
 **Key points:**

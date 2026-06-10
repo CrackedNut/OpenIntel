@@ -18,4 +18,4 @@ What you expected to happen.
 **Environment**
 - OS:
 - Node version:
-- claude-threads version:
+- OpenIntel version:

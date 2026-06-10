@@ -1,6 +1,6 @@
-# claude-threads Setup Guide
+# OpenIntel Setup Guide
 
-> **💡 Quick Start:** Run `claude-threads` and the interactive wizard will guide you through setup.
+> **💡 Quick Start:** Run the one-liner installer (see README), or `openintel setup` for the terminal wizard — or skip the terminal entirely and use the dashboard's **Platforms** tab at http://127.0.0.1:7777.
 > Use this guide when you need help creating bot accounts on Mattermost or Slack.
 
 ## Table of Contents
@@ -37,7 +37,7 @@
 
 ### Step 2: Get Channel ID
 
-1. **Open the channel** where you want claude-threads to operate
+1. **Open the channel** where you want OpenIntel to operate
 2. Click the **channel name** at the top
 3. Select **View Info**
 4. The URL will change to something like:
@@ -86,8 +86,7 @@ If you want to restrict who can use the bot, prepare a comma-separated list of M
 3. Select **From an app manifest**
 4. Choose your workspace
 5. **Paste the manifest** from `docs/slack-app-manifest.yaml`:
-   - View it here: https://github.com/anneschuth/claude-threads/blob/main/docs/slack-app-manifest.yaml
-   - Or copy from your local installation: `~/.bun/install/global/node_modules/claude-threads/docs/slack-app-manifest.yaml`
+   - View it here: https://github.com/CrackedNut/OpenIntel/blob/main/docs/slack-app-manifest.yaml
 6. Click **Create**
 7. **Skip to Step 2** below (Socket Mode will already be configured)
 
@@ -206,11 +205,11 @@ If you want to restrict who can use the bot, prepare a comma-separated list of S
 
 ```bash
 # Install
-bun install -g claude-threads
+curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
 
 # Run the wizard
 cd /your/project
-claude-threads
+openintel start
 ```
 
 **The wizard will:**
@@ -235,7 +234,7 @@ claude-threads
 To modify your configuration:
 
 ```bash
-claude-threads --setup
+openintel setup
 ```
 
 This will reload your existing config and let you update settings.
@@ -244,7 +243,7 @@ This will reload your existing config and let you update settings.
 
 > **⚠️ Not recommended for first-time setup!**
 >
-> The interactive wizard (`claude-threads`) is the recommended way to configure claude-threads because it:
+> The interactive wizard (`openintel setup`) — or the dashboard's Platforms tab — is the recommended way to configure OpenIntel because it:
 > - Validates your credentials in real-time
 > - Provides helpful error messages and troubleshooting
 > - Ensures correct YAML format
@@ -264,7 +263,7 @@ If you still want to manually edit the config:
 # Edit with your favorite editor:
 nano ~/.config/claude-threads/config.yaml
 
-# Then restart claude-threads to apply changes
+# Then restart OpenIntel to apply changes (openintel restart)
 ```
 
 **Reference config.yaml:**
@@ -318,7 +317,7 @@ platforms:
 #### Bot doesn't respond to messages
 - **Check** the bot name matches what you're @mentioning
 - **Verify** the bot is a member of the channel
-- **Look at** claude-threads logs for errors (`DEBUG=1 claude-threads`)
+- **Look at** the logs for errors (`openintel logs`, or the dashboard's Logs tab)
 
 ### Slack Issues
 
@@ -336,7 +335,7 @@ platforms:
 - **Check** Event Subscriptions are enabled with `message.channels`
 - **Verify** Socket Mode is enabled (required for receiving events)
 - **Invite the bot** to the channel if not already a member
-- **Look at** claude-threads logs (`DEBUG=1 claude-threads`)
+- **Look at** the logs (`openintel logs`, or the dashboard's Logs tab)
 
 #### "missing_scope" errors
 - **Review** OAuth scopes in Step 3 above
@@ -348,30 +347,30 @@ platforms:
 #### "Claude CLI not found"
 - **Install** Claude Code CLI: `npm install -g @anthropic-ai/claude-code@2.0.76`
 - **Verify** it's in PATH: `which claude`
-- **Set** custom path if needed: `CLAUDE_PATH=/path/to/claude claude-threads`
+- **Set** custom path if needed: `CLAUDE_PATH=/path/to/claude` in the daemon environment
 
 #### "Incompatible Claude CLI version"
 - **Check** your version: `claude --version`
 - **Install** compatible version: `npm install -g @anthropic-ai/claude-code@2.0.76`
-- **Skip check** (not recommended): `claude-threads --skip-version-check`
+- **Skip check** (not recommended): `--skip-version-check`
 
 #### Can't find config file
 - **Default location**: `~/.config/claude-threads/config.yaml`
 - **Create directory**: `mkdir -p ~/.config/claude-threads`
-- **Run onboarding**: `claude-threads` will create the config
+- **Run onboarding**: `openintel setup` will create the config
 
 #### Bot works but permissions don't prompt
 - **Check** `skipPermissions` is set to `false` in config
-- **Restart** claude-threads after changing config
+- **Restart** OpenIntel after changing config (`openintel restart`)
 - **Try** `!permissions interactive` in a running session
 
 ### Getting Help
 
 If you're still stuck:
 
-1. **Check logs**: Run with `DEBUG=1 claude-threads` for verbose output
+1. **Check logs**: `openintel logs` (or the dashboard's Logs tab)
 2. **Review the README**: See `CLAUDE.md` for architecture details
-3. **Check the issues**: https://github.com/anneschuth/claude-threads/issues
+3. **Check the issues**: https://github.com/CrackedNut/OpenIntel/issues
 4. **Open an issue**: Include:
    - Platform (Mattermost/Slack)
    - Error messages from logs
@@ -384,9 +383,9 @@ If you're still stuck:
 
 Once configured, test your bot:
 
-1. **Start claude-threads**:
+1. **Start OpenIntel**:
    ```bash
-   claude-threads
+   openintel start
    ```
 
 2. **In your chat platform**, @mention the bot:

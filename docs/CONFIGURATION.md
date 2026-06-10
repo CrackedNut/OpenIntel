@@ -145,7 +145,7 @@ Export either with a different value in the bot's own env to disable.
 CLI options override config file settings:
 
 ```bash
-claude-threads [options]
+openintel [options]   # (alias: claude-threads)
 
 Options:
   --url <url>              Mattermost server URL

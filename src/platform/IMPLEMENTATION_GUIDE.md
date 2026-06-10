@@ -1,10 +1,10 @@
 # Platform Implementation Guide
 
-This guide explains how to add support for a new chat platform to claude-threads.
+This guide explains how to add support for a new chat platform to OpenIntel.
 
 ## Overview
 
-claude-threads uses a platform abstraction layer that normalizes differences between chat platforms. Each platform implements the `PlatformClient` interface, which provides a common API for:
+OpenIntel uses a platform abstraction layer that normalizes differences between chat platforms. Each platform implements the `PlatformClient` interface, which provides a common API for:
 
 - Sending and receiving messages
 - Managing reactions
