@@ -653,10 +653,10 @@ describe('handleReadPostWith', () => {
     const api = new FakeApi();
     const result = await handleReadPostWith(
       { url: `${PLATFORM_URL}/digilab/pl/${POST_ID}` },
-      makeReadPostCfg(api, { platformType: 'discord' }),
+      makeReadPostCfg(api, { platformType: 'telegram' }),
     );
     expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/not supported on platform 'discord'/);
+    expect(result.reason).toMatch(/not supported on platform 'telegram'/);
   });
 
   it('errors when platform URL is unconfigured', async () => {

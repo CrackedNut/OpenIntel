@@ -392,19 +392,24 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
         ? ['url', 'token', 'channelId', 'botName']
         : type === 'slack'
           ? ['botToken', 'appToken', 'channelId', 'botName']
-          : null;
-    if (!required) return c.json({ ok: false, error: 'type must be "mattermost" or "slack"' }, 400);
+          : type === 'discord'
+            ? ['token', 'channelId', 'botName']
+            : null;
+    if (!required) return c.json({ ok: false, error: 'type must be "mattermost", "slack", or "discord"' }, 400);
     for (const k of required) {
       if (!body[k]?.trim()) return c.json({ ok: false, error: `missing field: ${k}` }, 400);
     }
 
     // Validate credentials with real API calls before touching the config.
-    const { validateMattermostCredentials, validateSlackCredentials } = await import('../onboarding.js');
+    const { validateMattermostCredentials, validateSlackCredentials, validateDiscordCredentials } =
+      await import('../onboarding.js');
     const url = (body.url ?? '').replace(/\/+$/, '');
     const result =
       type === 'mattermost'
         ? await validateMattermostCredentials(url, body.token, body.channelId)
-        : await validateSlackCredentials(body.botToken, body.appToken, body.channelId);
+        : type === 'discord'
+          ? await validateDiscordCredentials(body.token, body.channelId)
+          : await validateSlackCredentials(body.botToken, body.appToken, body.channelId);
     if (!result.success) return c.json({ ok: false, error: result.error ?? 'credential validation failed' }, 400);
 
     const config = loadConfigWithMigration();
@@ -434,6 +439,9 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
     if (type === 'mattermost') {
       entry.url = url;
       entry.token = body.token.trim();
+    } else if (type === 'discord') {
+      entry.token = body.token.trim();
+      entry.allChannels = body.allChannels === 'true' || body.allChannels === '1';
     } else {
       entry.botToken = body.botToken.trim();
       entry.appToken = body.appToken.trim();

@@ -13,6 +13,7 @@ export type {
   McpPlatformApi,
   MattermostMcpApiConfig,
   SlackMcpApiConfig,
+  DiscordMcpApiConfig,
   ReactionEvent,
   PostedMessage,
   McpPost,
@@ -31,6 +32,7 @@ export type {
 export { BasePlatformClient } from './base-client.js';
 export { MattermostClient } from './mattermost/client.js';
 export { SlackClient } from './slack/client.js';
+export { DiscordClient } from './discord/client.js';
 
 // MCP platform API factory
 export { createMcpPlatformApi } from './mcp-platform-api-factory.js';

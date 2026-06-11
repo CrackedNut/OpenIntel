@@ -269,7 +269,7 @@ export type PlatformMode = 'thread' | 'channel';
 
 export interface PlatformInstanceConfig {
   id: string;
-  type: 'mattermost' | 'slack';
+  type: 'mattermost' | 'slack' | 'discord';
   displayName: string;
   /**
    * Per-thread session header visibility. Default `'full'`.
@@ -463,6 +463,40 @@ export interface SlackPlatformConfig extends PlatformInstanceConfig {
   /** Preferred way to configure permissions. See `PermissionMode`. */
   permissionMode?: PermissionMode;
   /** Optional API URL override for testing (defaults to https://slack.com/api) */
+  apiUrl?: string;
+  /** Outbound `send_file` settings. */
+  outboundFiles?: OutboundFilesConfig;
+}
+
+export interface DiscordPlatformConfig extends PlatformInstanceConfig {
+  type: 'discord';
+  /** Bot token from the Discord Developer Portal (Bot → Reset Token). */
+  token: string;
+  /**
+   * Home channel id (a numeric snowflake). Channel-mode sessions, the sticky
+   * message, and missed-message recovery are scoped to this channel. With
+   * `allChannels`, every channel the bot can see behaves like the home channel.
+   */
+  channelId: string;
+  /** The bot's username (used for @mention matching / display). */
+  botName: string;
+  /**
+   * Allowed users — numeric Discord user ids and/or usernames. Empty = anyone
+   * in a visible channel may start sessions.
+   */
+  allowedUsers: string[];
+  /**
+   * Answer @mentions in EVERY channel/guild the bot can see, not just
+   * `channelId`. Same semantics as the Mattermost flag. Default false.
+   */
+  allChannels?: boolean;
+  /**
+   * @deprecated Use `permissionMode` instead. Kept for backward compatibility.
+   */
+  skipPermissions?: boolean;
+  /** Preferred way to configure permissions. See `PermissionMode`. */
+  permissionMode?: PermissionMode;
+  /** Optional REST base override for testing (defaults to https://discord.com/api/v10). */
   apiUrl?: string;
   /** Outbound `send_file` settings. */
   outboundFiles?: OutboundFilesConfig;

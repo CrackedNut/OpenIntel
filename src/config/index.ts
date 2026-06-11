@@ -17,6 +17,7 @@ export type {
   PlatformInstanceConfig,
   MattermostPlatformConfig,
   SlackPlatformConfig,
+  DiscordPlatformConfig,
   AutoUpdateConfig,
   AutoRestartMode,
   ScheduledWindow,

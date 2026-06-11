@@ -10,6 +10,7 @@ import {
   OVERHEAD_VISIBILITY_VALUES,
   type MattermostPlatformConfig,
   type SlackPlatformConfig,
+  type DiscordPlatformConfig,
   type PlatformInstanceConfig,
   type PermissionMode,
   type OverheadVisibility,
@@ -17,7 +18,7 @@ import {
 import type { CliArgs } from './config/index.js';
 import { resolveSessionWorkingDir } from './config/agent-paths.js';
 import { runOnboarding } from './onboarding.js';
-import { MattermostClient, SlackClient, type PlatformClient, type PlatformPost, type PlatformUser } from './platform/index.js';
+import { MattermostClient, SlackClient, DiscordClient, type PlatformClient, type PlatformPost, type PlatformUser } from './platform/index.js';
 import { SessionManager } from './session/index.js';
 import { SessionStore } from './persistence/session-store.js';
 import { checkForUpdates } from './update-notifier.js';
@@ -49,6 +50,8 @@ function createPlatformClient(config: PlatformInstanceConfig): PlatformClient {
       return new MattermostClient(config as MattermostPlatformConfig);
     case 'slack':
       return new SlackClient(config as SlackPlatformConfig);
+    case 'discord':
+      return new DiscordClient(config as DiscordPlatformConfig);
     default:
       throw new Error(`Unsupported platform type: ${(config as PlatformInstanceConfig).type}`);
   }
@@ -616,16 +619,22 @@ async function startWithoutDaemon() {
   // Initialize all configured platforms
   ui.addLog({ level: 'debug', component: 'init', message: `Initializing ${config.platforms.length} platform(s)` });
   for (const platformConfig of config.platforms) {
-    const typedConfig = platformConfig as MattermostPlatformConfig | SlackPlatformConfig;
+    const typedConfig = platformConfig as MattermostPlatformConfig | SlackPlatformConfig | DiscordPlatformConfig;
     const isEnabled = platformEnabledState.get(platformConfig.id) ?? true; // Default to enabled
     ui.addLog({ level: 'info', component: 'init', message: `Creating ${platformConfig.type} platform: ${platformConfig.id}${isEnabled ? '' : ' (disabled)'}` });
 
+    const platformUrl =
+      typedConfig.type === 'mattermost'
+        ? (typedConfig as MattermostPlatformConfig).url
+        : typedConfig.type === 'discord'
+          ? 'discord.com'
+          : 'slack.com';
     // Register platform with UI (with persisted enabled state)
     ui.setPlatformStatus(platformConfig.id, {
       displayName: platformConfig.displayName || platformConfig.id,
       botName: typedConfig.botName,
-      url: typedConfig.type === 'mattermost' ? (typedConfig as MattermostPlatformConfig).url : 'slack.com',
-      platformType: typedConfig.type as 'mattermost' | 'slack',
+      url: platformUrl,
+      platformType: typedConfig.type,
       enabled: isEnabled,
     });
 

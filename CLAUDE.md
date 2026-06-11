@@ -7,6 +7,7 @@ OpenIntel is a multi-platform agent bot that lets users interact with Claude Cod
 **Currently Supported Platforms:**
 - Mattermost (full support)
 - Slack (full support)
+- Discord (full support; uses discord.js. Every channel/thread/DM maps to a channel-mode session. Requires the MESSAGE CONTENT privileged intent.)
 
 **Key Features:**
 - Real-time streaming of Claude responses to chat platforms

@@ -14,6 +14,7 @@ import {
   type PlatformInstanceConfig,
   type MattermostPlatformConfig,
   type SlackPlatformConfig,
+  type DiscordPlatformConfig,
   type LimitsConfig,
   type PermissionMode,
   type OverheadVisibility,
@@ -126,7 +127,28 @@ async function copyToClipboard(text: string): Promise<boolean> {
 /**
  * Show platform-specific setup instructions
  */
-async function showPlatformInstructions(platformType: 'mattermost' | 'slack'): Promise<void> {
+async function showPlatformInstructions(platformType: 'mattermost' | 'slack' | 'discord'): Promise<void> {
+  if (platformType === 'discord') {
+    console.log('');
+    console.log(bold('  📋 Discord Setup - What You\'ll Need:'));
+    console.log('');
+    console.log(dim('  1. Bot token:'));
+    console.log(dim('     • Go to https://discord.com/developers/applications → New Application'));
+    console.log(dim('     • Bot tab → Reset Token → copy it'));
+    console.log(dim('     • Enable the "MESSAGE CONTENT INTENT" toggle (required!)'));
+    console.log('');
+    console.log(dim('  2. Invite the bot:'));
+    console.log(dim('     • OAuth2 → URL Generator → scopes: bot'));
+    console.log(dim('     • Bot permissions: Send Messages, Read Message History,'));
+    console.log(dim('       Add Reactions, Attach Files, Create Public Threads'));
+    console.log(dim('     • Open the generated URL and add the bot to your server'));
+    console.log('');
+    console.log(dim('  3. Channel ID:'));
+    console.log(dim('     • Enable Developer Mode (Settings → Advanced)'));
+    console.log(dim('     • Right-click the channel → Copy Channel ID (a numeric snowflake)'));
+    console.log('');
+    return;
+  }
   if (platformType === 'mattermost') {
     console.log('');
     console.log(bold('  📋 Mattermost Setup - What You\'ll Need:'));
@@ -428,6 +450,7 @@ export async function runOnboarding(reconfigure = false): Promise<void> {
       choices: [
         { title: 'Slack', value: 'slack' },
         { title: 'Mattermost', value: 'mattermost' },
+        { title: 'Discord', value: 'discord' },
         ...(isFirst ? [] : [{ title: '(Done - finish setup)', value: 'done' }]),
       ],
       initial: 0,
@@ -468,6 +491,8 @@ export async function runOnboarding(reconfigure = false): Promise<void> {
     let platform: PlatformInstanceConfig;
     if (platformType === 'mattermost') {
       platform = await setupMattermostPlatform(platformId, undefined);
+    } else if (platformType === 'discord') {
+      platform = await setupDiscordPlatform(platformId);
     } else {
       platform = await setupSlackPlatform(platformId, undefined);
     }
@@ -1329,6 +1354,41 @@ export interface ValidationResult {
  * Validate Mattermost credentials by making test API calls
  * @internal Exported for testing
  */
+/**
+ * Validate a Discord bot token (and that the home channel is visible) via
+ * two REST calls. Used by the dashboard's "add platform" form.
+ */
+export async function validateDiscordCredentials(
+  token: string,
+  channelId: string,
+): Promise<ValidationResult> {
+  try {
+    const me = await fetch('https://discord.com/api/v10/users/@me', {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!me.ok) {
+      return { success: false, error: me.status === 401 ? 'invalid bot token' : `token check failed (${me.status})` };
+    }
+    const meJson = (await me.json()) as { username?: string };
+    const ch = await fetch(`https://discord.com/api/v10/channels/${channelId}`, {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!ch.ok) {
+      return {
+        success: false,
+        error:
+          ch.status === 403 || ch.status === 404
+            ? 'channel not visible — invite the bot to it first, then retry'
+            : `channel check failed (${ch.status})`,
+      };
+    }
+    const chJson = (await ch.json()) as { name?: string };
+    return { success: true, botUsername: meJson.username, channelName: chJson.name };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : 'Network error' };
+  }
+}
+
 export async function validateMattermostCredentials(
   url: string,
   token: string,
@@ -1748,4 +1808,72 @@ async function setupSlackPlatform(
           : {}),
     };
   }
+}
+
+/**
+ * Collect Discord platform settings. Kept compact (no live token test): a
+ * Discord token check needs a gateway/REST round-trip, and the bot validates
+ * on first connect anyway. Power users can also add Discord via the dashboard
+ * Platforms tab or by editing config.yaml directly.
+ */
+async function setupDiscordPlatform(id: string): Promise<DiscordPlatformConfig> {
+  console.log('');
+  console.log(dim('  Now enter your Discord credentials:'));
+  console.log('');
+
+  const { displayName } = await prompts({
+    type: 'text', name: 'displayName', message: 'Display name', initial: 'Discord',
+  }, { onCancel });
+
+  console.log('');
+  console.log(dim('  Bot token: Developer Portal → your app → Bot → Reset Token'));
+  const { token } = await prompts({
+    type: 'password', name: 'token', message: 'Bot token',
+    validate: (v: string) => (v ? true : 'Bot token is required'),
+  }, { onCancel });
+
+  console.log('');
+  console.log(dim('  Channel ID: right-click the channel → Copy Channel ID (Developer Mode on)'));
+  const { channelId } = await prompts({
+    type: 'text', name: 'channelId', message: 'Home channel ID',
+    validate: (v: string) => (/^\d{17,20}$/.test(v) ? true : 'A numeric channel ID (snowflake) is required'),
+  }, { onCancel });
+
+  const { botName } = await prompts({
+    type: 'text', name: 'botName', message: 'Bot username', initial: 'claude',
+  }, { onCancel });
+
+  const { allChannels } = await prompts({
+    type: 'confirm', name: 'allChannels',
+    message: 'Answer @mentions in every channel the bot can see (not just the home channel)?',
+    initial: true,
+  }, { onCancel });
+
+  const { allowedUsersRaw } = await prompts({
+    type: 'text', name: 'allowedUsersRaw',
+    message: 'Allowed users (comma-separated ids or usernames; empty = anyone)',
+    initial: '',
+  }, { onCancel });
+
+  const { permissionMode } = await prompts({
+    type: 'select', name: 'permissionMode', message: 'Permission mode',
+    choices: PERMISSION_MODE_CHOICES, initial: 0,
+  }, { onCancel });
+
+  const allowedUsers = (allowedUsersRaw || '')
+    .split(',')
+    .map((u: string) => u.trim())
+    .filter(Boolean);
+
+  return {
+    id,
+    type: 'discord',
+    displayName: displayName || 'Discord',
+    token,
+    channelId,
+    botName: botName || 'claude',
+    allowedUsers,
+    allChannels: !!allChannels,
+    permissionMode: permissionMode as PermissionMode,
+  };
 }

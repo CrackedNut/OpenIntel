@@ -288,3 +288,20 @@ export interface SlackMcpApiConfig {
   allowedUsers: string[];
   debug?: boolean;
 }
+
+/**
+ * Configuration for the Discord MCP platform API.
+ *
+ * The child is REST-only: it polls the reactions endpoint for approvals
+ * rather than opening a second Gateway connection (one per session would be
+ * wasteful). `channelId` is the session's channel — permission prompts post
+ * there and reaction polling watches that message.
+ */
+export interface DiscordMcpApiConfig {
+  platformType: 'discord';
+  token: string;       // Bot token (Authorization: Bot <token>)
+  channelId: string;
+  allowedUsers: string[];
+  apiUrl?: string;     // defaults to https://discord.com/api/v10
+  debug?: boolean;
+}

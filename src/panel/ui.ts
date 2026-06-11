@@ -303,12 +303,16 @@ export const PANEL_HTML = `<!doctype html>
         <div class="seg">
           <button id="seg-mattermost" class="active" onclick="setPlatformType('mattermost')">Mattermost</button>
           <button id="seg-slack" onclick="setPlatformType('slack')">Slack</button>
+          <button id="seg-discord" onclick="setPlatformType('discord')">Discord</button>
         </div>
         <div id="pf-help-mattermost" class="bar-note" style="margin-bottom:14px;line-height:1.7">
           Create the bot: System Console → Integrations → Bot Accounts (enable) → Integrations → Bot Accounts → <b>Add Bot Account</b> → copy the token. Then add the bot to your channel and grab the channel ID from View Info.
         </div>
         <div id="pf-help-slack" class="bar-note" style="margin-bottom:14px;line-height:1.7;display:none">
           Create an app at api.slack.com/apps → enable <b>Socket Mode</b> (App-Level Token with connections:write → xapp-…) → OAuth scopes: channels:history, channels:read, chat:write, files:read, reactions:read, reactions:write, users:read → install to workspace (Bot Token xoxb-…) → invite the bot to your channel.
+        </div>
+        <div id="pf-help-discord" class="bar-note" style="margin-bottom:14px;line-height:1.7;display:none">
+          Create an app at discord.com/developers → Bot → Reset Token (copy it) → enable the <b>MESSAGE CONTENT INTENT</b> toggle. OAuth2 → URL Generator → scope <b>bot</b> with Send Messages, Read Message History, Add Reactions, Attach Files, Create Public Threads → open the URL to add the bot to your server. Channel ID: enable Developer Mode, right-click the channel → Copy Channel ID.
         </div>
         <div class="path-row" id="pf-url" style="border:none;padding:8px 0"><div class="lbl">Server URL</div>
           <input type="text" id="pf-field-url" placeholder="https://chat.example.com"></div>
@@ -326,6 +330,10 @@ export const PANEL_HTML = `<!doctype html>
           <input type="text" id="pf-field-allowedUsers" placeholder="alice, bob"></div>
         <div class="path-row" style="border:none;padding:8px 0"><div class="lbl">Display name <span class="bar-note">(optional)</span></div>
           <input type="text" id="pf-field-displayName" placeholder="My Team"></div>
+        <div class="path-row" id="pf-allChannels" style="border:none;padding:8px 0;display:none">
+          <label class="bar-note" style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="pf-field-allChannels" checked> Answer @mentions in every channel the bot can see (not just the home channel)
+          </label></div>
         <div class="editor-bar">
           <button class="btn" id="pf-add" onclick="addPlatform()">Validate &amp; add</button>
           <span class="bar-note">Credentials are tested against the live API. After adding, hit Restart to connect.</span>
@@ -659,14 +667,16 @@ function deleteEntry(kind) {
 var platformType = 'mattermost';
 function setPlatformType(t) {
   platformType = t;
-  $('seg-mattermost').classList.toggle('active', t === 'mattermost');
-  $('seg-slack').classList.toggle('active', t === 'slack');
+  ['mattermost', 'slack', 'discord'].forEach(function (x) { $('seg-' + x).classList.toggle('active', t === x); });
   $('pf-help-mattermost').style.display = t === 'mattermost' ? '' : 'none';
   $('pf-help-slack').style.display = t === 'slack' ? '' : 'none';
+  $('pf-help-discord').style.display = t === 'discord' ? '' : 'none';
   $('pf-url').style.display = t === 'mattermost' ? '' : 'none';
-  $('pf-token').style.display = t === 'mattermost' ? '' : 'none';
+  // Discord uses the same single "Bot token" field as Mattermost.
+  $('pf-token').style.display = (t === 'mattermost' || t === 'discord') ? '' : 'none';
   $('pf-botToken').style.display = t === 'slack' ? '' : 'none';
   $('pf-appToken').style.display = t === 'slack' ? '' : 'none';
+  $('pf-allChannels').style.display = t === 'discord' ? '' : 'none';
 }
 function loadPlatforms() {
   fetch('/api/platforms').then(function (r) { return r.json(); }).then(function (j) {
@@ -687,6 +697,7 @@ function addPlatform() {
   var fields = ['url', 'token', 'botToken', 'appToken', 'channelId', 'botName', 'allowedUsers', 'displayName'];
   var body = { type: platformType };
   fields.forEach(function (f) { body[f] = ($('pf-field-' + f).value || '').trim(); });
+  body.allChannels = $('pf-field-allChannels').checked ? 'true' : 'false';
   var btn = $('pf-add');
   btn.disabled = true; btn.textContent = 'Validating…';
   fetch('/api/platforms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })

@@ -33,7 +33,7 @@ import { z } from 'zod';
 import { isApprovalEmoji, isAllowAllEmoji, APPROVAL_EMOJIS, ALLOW_ALL_EMOJIS, DENIAL_EMOJIS } from '../utils/emoji.js';
 import { formatToolForPermission } from '../operations/index.js';
 import { mcpLogger } from '../utils/logger.js';
-import type { McpPlatformApi, MattermostMcpApiConfig, SlackMcpApiConfig, McpPost } from '../platform/mcp-platform-api.js';
+import type { McpPlatformApi, MattermostMcpApiConfig, SlackMcpApiConfig, DiscordMcpApiConfig, McpPost } from '../platform/mcp-platform-api.js';
 import { createMcpPlatformApi } from '../platform/mcp-platform-api-factory.js';
 import { validateOutboundPath } from './path-validator.js';
 import { OUTBOUND_ENV } from './outbound-env.js';
@@ -49,6 +49,11 @@ import {
   resolveSlackPermalink,
   formatResolvedSlack,
 } from '../platform/slack/permalink.js';
+import {
+  parseDiscordPermalink,
+  resolveDiscordPermalink,
+  formatResolvedDiscord,
+} from '../platform/discord/permalink.js';
 import { clampThreadLimit, truncateBody, quoteBlock } from '../platform/permalink-shared.js';
 import { searchArchive, formatArchiveHits, type ArchiveScope } from '../persistence/archive-search.js';
 
@@ -127,26 +132,39 @@ const SKIP_STANDARD_PERMISSION_PROMPT = new Set<string>([
 // =============================================================================
 // Permission API Instance
 // =============================================================================
-const apiConfig: MattermostMcpApiConfig | SlackMcpApiConfig =
-  PLATFORM_TYPE === 'slack'
-    ? {
-        platformType: 'slack',
-        botToken: PLATFORM_TOKEN,
-        appToken: process.env.PLATFORM_APP_TOKEN || '',
-        channelId: PLATFORM_CHANNEL_ID,
-        threadTs: PLATFORM_THREAD_ID || undefined,
-        allowedUsers: ALLOWED_USERS,
-        debug: process.env.DEBUG === '1',
-      }
-    : {
-        platformType: 'mattermost',
-        url: PLATFORM_URL,
-        token: PLATFORM_TOKEN,
-        channelId: PLATFORM_CHANNEL_ID,
-        threadId: PLATFORM_THREAD_ID || undefined,
-        allowedUsers: ALLOWED_USERS,
-        debug: process.env.DEBUG === '1',
-      };
+function buildApiConfig(): MattermostMcpApiConfig | SlackMcpApiConfig | DiscordMcpApiConfig {
+  if (PLATFORM_TYPE === 'slack') {
+    return {
+      platformType: 'slack',
+      botToken: PLATFORM_TOKEN,
+      appToken: process.env.PLATFORM_APP_TOKEN || '',
+      channelId: PLATFORM_CHANNEL_ID,
+      threadTs: PLATFORM_THREAD_ID || undefined,
+      allowedUsers: ALLOWED_USERS,
+      debug: process.env.DEBUG === '1',
+    };
+  }
+  if (PLATFORM_TYPE === 'discord') {
+    return {
+      platformType: 'discord',
+      token: PLATFORM_TOKEN,
+      channelId: PLATFORM_CHANNEL_ID,
+      allowedUsers: ALLOWED_USERS,
+      debug: process.env.DEBUG === '1',
+    };
+  }
+  return {
+    platformType: 'mattermost',
+    url: PLATFORM_URL,
+    token: PLATFORM_TOKEN,
+    channelId: PLATFORM_CHANNEL_ID,
+    threadId: PLATFORM_THREAD_ID || undefined,
+    allowedUsers: ALLOWED_USERS,
+    debug: process.env.DEBUG === '1',
+  };
+}
+
+const apiConfig = buildApiConfig();
 
 let mcpApi: McpPlatformApi | null = null;
 
@@ -586,10 +604,41 @@ export async function handleReadPostWith(
   if (cfg.platformType === 'slack') {
     return handleReadPostSlack(args, cfg);
   }
+  if (cfg.platformType === 'discord') {
+    return handleReadPostDiscord(args, cfg);
+  }
   return {
     ok: false,
     reason: `read_post is not supported on platform '${cfg.platformType}'`,
   };
+}
+
+async function handleReadPostDiscord(
+  args: { url: string },
+  cfg: ReadPostHandlerConfig,
+): Promise<ReadPostResult> {
+  if (!cfg.channelId) {
+    return { ok: false, reason: 'platform channel not configured' };
+  }
+  const parsed = parseDiscordPermalink(args.url);
+  if (!parsed) {
+    return {
+      ok: false,
+      reason: 'not a Discord permalink (expected https://discord.com/channels/{guild}/{channel}/{message})',
+    };
+  }
+  const result = await resolveDiscordPermalink(cfg.api, parsed, cfg.channelId);
+  if (!result.ok) {
+    switch (result.error.kind) {
+      case 'wrong-channel':
+        return { ok: false, reason: 'permalink is for a channel the bot is not operating in' };
+      case 'not-found':
+        return { ok: false, reason: 'message not found, or the bot cannot see it' };
+      case 'unsupported':
+        return { ok: false, reason: 'this platform does not support reading posts' };
+    }
+  }
+  return { ok: true, content: formatResolvedDiscord(result.resolved) };
 }
 
 async function handleReadPostMattermost(
@@ -928,6 +977,8 @@ const READ_CHANNEL_HISTORY_MAX_LIMIT = 100;
  */
 const MM_CHANNEL_ID_RE = /^[a-z0-9]{26}$/;
 const SLACK_CHANNEL_ID_RE = /^[CGD][A-Z0-9]{8,12}$/;
+// Discord ids are numeric snowflakes (17-20 digits).
+const DISCORD_CHANNEL_ID_RE = /^\d{17,20}$/;
 
 export interface ReadChannelHistoryResult {
   ok: boolean;
@@ -1004,6 +1055,7 @@ function clampReadChannelHistoryLimit(requested: number | undefined): number {
 function isValidChannelId(id: string, platformType: string): boolean {
   if (platformType === 'mattermost') return MM_CHANNEL_ID_RE.test(id);
   if (platformType === 'slack') return SLACK_CHANNEL_ID_RE.test(id);
+  if (platformType === 'discord') return DISCORD_CHANNEL_ID_RE.test(id);
   return false;
 }
 
@@ -1637,6 +1689,30 @@ async function resolvePostFromUrl(
     const result = await resolveSlackPermalink(cfg.api, parsed, cfg.channelId);
     if (!result.ok) {
       return { ok: false, reason: slackResolveErrorReason(result.error) };
+    }
+    return { ok: true, post: result.resolved.post };
+  }
+
+  if (cfg.platformType === 'discord') {
+    if (!cfg.channelId) {
+      return { ok: false, reason: 'platform channel not configured' };
+    }
+    const parsed = parseDiscordPermalink(url);
+    if (!parsed) {
+      return {
+        ok: false,
+        reason: 'not a Discord permalink (expected https://discord.com/channels/{guild}/{channel}/{message})',
+      };
+    }
+    const result = await resolveDiscordPermalink(cfg.api, parsed, cfg.channelId);
+    if (!result.ok) {
+      const reason =
+        result.error.kind === 'wrong-channel'
+          ? 'permalink is for a channel the bot is not operating in'
+          : result.error.kind === 'not-found'
+            ? 'message not found, or the bot cannot see it'
+            : 'this platform does not support reading posts';
+      return { ok: false, reason };
     }
     return { ok: true, post: result.resolved.post };
   }

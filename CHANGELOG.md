@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2026-06-11
+
+### Added
+- **Discord support.** A third platform alongside Mattermost and Slack, built on discord.js. Set `type: discord` in a platform block with a bot `token`, home `channelId` (a numeric snowflake), `botName`, and `allowedUsers`. Every Discord channel, thread, and DM maps to a channel-mode session keyed by that channel's id — the bot replies where you mention it, native Discord threads each get their own session, and DMs work without an explicit @mention. `allChannels: true` answers mentions in every channel the bot can see. Reaction-based permission prompts work via a REST-polling MCP child (no second Gateway connection per session); the dashboard Platforms tab and the `openintel setup` wizard both gained a Discord option with live token validation; `read_post` resolves Discord message links. **Requires the MESSAGE CONTENT privileged intent** (Developer Portal → Bot) and a bot invited with Send Messages / Read Message History / Add Reactions / Attach Files / Create Public Threads. Emoji shortcodes used by the bot (👀/✅/❌ etc.) are translated to/from Discord unicode; messages are chunked to Discord's 2000-char limit.
+
 ## [2.1.2] - 2026-06-11
 
 ### Fixed
