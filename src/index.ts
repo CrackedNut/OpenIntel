@@ -15,6 +15,7 @@ import {
   type OverheadVisibility,
 } from './config/index.js';
 import type { CliArgs } from './config/index.js';
+import { resolveSessionWorkingDir } from './config/agent-paths.js';
 import { runOnboarding } from './onboarding.js';
 import { MattermostClient, SlackClient, type PlatformClient, type PlatformPost, type PlatformUser } from './platform/index.js';
 import { SessionManager } from './session/index.js';
@@ -306,12 +307,17 @@ async function startWithoutDaemon() {
     await runOnboarding(false); // first-time mode
   }
 
-  const workingDir = process.cwd();
   const newConfig = loadConfigWithMigration();
 
   if (!newConfig) {
     throw new Error('No configuration found. Run with --setup to configure.');
   }
+
+  // Session working directory: prefer the configured `workingDir`, falling
+  // back to the bot's own launch directory. Without the config preference
+  // the daemon's cwd (the source checkout, e.g. ~/code/claude-threads-agent)
+  // leaks in as every session's default instead of the user's intended dir.
+  const workingDir = resolveSessionWorkingDir(newConfig.workingDir, process.cwd());
 
   // CLI args can override global settings
   if (cliArgs.chrome !== undefined) {

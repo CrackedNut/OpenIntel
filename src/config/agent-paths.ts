@@ -23,8 +23,26 @@ import type { AgentPersonaConfig, SkillsIndexConfig, Config } from './types.js';
 /** Self-owned content root for fresh installs. */
 export const AGENT_HOME = join(homedir(), '.config', 'claude-threads', 'agent');
 
-function resolveTilde(p: string): string {
+/**
+ * Expand a leading `~` to the user's home dir, otherwise resolve to an
+ * absolute path. Exported so the session working-directory resolver can
+ * honor `~`-prefixed `workingDir` values from config.yaml.
+ */
+export function resolveTilde(p: string): string {
   return p.startsWith('~') ? join(homedir(), p.slice(1)) : resolve(p);
+}
+
+/**
+ * Resolve the default session working directory. Prefers the configured
+ * `workingDir` (tilde-expanded), falling back to the bot's own launch cwd.
+ * Without the config preference the daemon's cwd — the source checkout,
+ * e.g. ~/code/claude-threads-agent — leaks in as every session's default.
+ */
+export function resolveSessionWorkingDir(
+  configWorkingDir: string | undefined,
+  cwd: string,
+): string {
+  return configWorkingDir ? resolveTilde(configWorkingDir) : cwd;
 }
 
 function firstExisting(candidates: string[], fallback: string): string {
