@@ -242,6 +242,21 @@ async function dispatch(
       }
     }
 
+    // Number emoji on the `!model` picker → apply the model pick
+    if (session.pendingModelPick?.postId === postId) {
+      const emojiIndex = getNumberEmojiIndex(emojiName);
+      if (emojiIndex >= 0) {
+        const handled = await commands.applyModelPick(
+          session,
+          postId,
+          emojiIndex,
+          username,
+          deps.getContext(),
+        );
+        if (handled) return;
+      }
+    }
+
     // 🐛 on the last error post → open bug report
     if (session.lastError?.postId === postId && isBugReportEmoji(emojiName)) {
       if (

@@ -243,6 +243,14 @@ export const COMMAND_REGISTRY: CommandDefinition[] = [
     isStackable: true,  // !permissions <mode> can be followed by more commands or prompt
   },
   {
+    command: 'model',
+    description: 'Pick a model for this session by reacting to the list (--default also saves it as the default)',
+    args: '[--default]',
+    category: 'settings',
+    audience: 'user',
+    claudeNotes: 'User decisions, not yours',
+  },
+  {
     command: 'thread',
     description: 'Start this session in its own thread (default at channel root would be channel-mode)',
     category: 'settings',

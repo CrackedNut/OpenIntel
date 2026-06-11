@@ -189,9 +189,14 @@ describe('emoji helpers', () => {
       expect(getNumberEmojiIndex('4️⃣')).toBe(3);
     });
 
+    it('returns 4 for "five" / "5️⃣" (added for the !model picker)', () => {
+      expect(getNumberEmojiIndex('five')).toBe(4);
+      expect(getNumberEmojiIndex('5️⃣')).toBe(4);
+    });
+
     it('returns -1 for non-number emojis', () => {
       expect(getNumberEmojiIndex('heart')).toBe(-1);
-      expect(getNumberEmojiIndex('five')).toBe(-1);
+      expect(getNumberEmojiIndex('six')).toBe(-1);
       expect(getNumberEmojiIndex('+1')).toBe(-1);
     });
 

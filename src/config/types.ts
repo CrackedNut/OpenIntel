@@ -243,6 +243,12 @@ export interface Config {
    * bind on a trusted network. See src/panel/server.ts.
    */
   panel?: { enabled?: boolean; port?: number; host?: string };
+  /**
+   * Default model for NEW sessions, passed to `claude --model`. Set only via
+   * `!model --default`; `!model` alone is session-scoped and never touches
+   * this. Undefined → let the spawned `claude` resolve its own default.
+   */
+  defaultModel?: string;
   platforms: PlatformInstanceConfig[];
 }
 

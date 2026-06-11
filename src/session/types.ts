@@ -316,6 +316,13 @@ export interface Session {
    * segment (`platformId:channelId`).
    */
   channelId?: string;
+  /**
+   * Per-session model override (`!model`), passed to `claude --model` on
+   * spawn/respawn. Session-scoped and persisted so it survives bot restart;
+   * never changes the user's Claude default (that's `Config.defaultModel`,
+   * set only via `!model --default`). Undefined → inherit the default.
+   */
+  modelOverride?: string;
   startedAt: Date;
   lastActivityAt: Date;
   sessionNumber: number;  // Session # when created
@@ -398,6 +405,14 @@ export interface Session {
   firstPrompt?: string;                     // First user message, sent again after mid-session worktree creation
   pendingWorktreeFailurePrompt?: PendingWorktreeFailurePrompt;  // Waiting for user to decide after worktree creation failed
   pendingWorktreeSuggestions?: PendingWorktreeSuggestions; // Branch suggestions for worktree prompt
+
+  /**
+   * Pending `!model` picker awaiting a number reaction. `postId` is the picker
+   * message; `setDefault` is true when the pick should also persist as the
+   * bot-wide default (`!model --default`). Ephemeral — not persisted across
+   * restart (a stale picker just stops responding).
+   */
+  pendingModelPick?: { postId: string; setDefault: boolean };
 
   // Thread context prompt support
   needsContextPromptOnNextMessage?: boolean;   // Offer context prompt on next follow-up message (after !cd)

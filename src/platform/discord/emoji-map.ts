@@ -32,6 +32,7 @@ const SHORTCODE_TO_UNICODE: Record<string, string> = {
   two: '2️⃣',
   three: '3️⃣',
   four: '4️⃣',
+  five: '5️⃣',
 };
 
 // Reverse map. Where several shortcodes share a glyph, the first wins — it's

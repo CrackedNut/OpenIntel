@@ -45,6 +45,8 @@ export interface PersistedSession {
   mode?: 'thread' | 'channel';
   /** Channel ID (load-bearing in channel mode; informational in thread mode). */
   channelId?: string;
+  /** Per-session model override (`!model`); passed to `claude --model` on resume. */
+  modelOverride?: string;
   claudeSessionId: string;       // UUID for --session-id / --resume
   startedBy: string;             // Username who started the session
   startedByDisplayName?: string; // Display name for UI

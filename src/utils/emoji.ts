@@ -15,7 +15,7 @@ export const DENIAL_EMOJIS = ['-1', 'thumbsdown'] as const;
 export const ALLOW_ALL_EMOJIS = ['white_check_mark', 'heavy_check_mark'] as const;
 
 /** Number emojis for multi-choice questions (1-4) */
-export const NUMBER_EMOJIS = ['one', 'two', 'three', 'four'] as const;
+export const NUMBER_EMOJIS = ['one', 'two', 'three', 'four', 'five'] as const;
 
 /** Emojis for canceling/killing a session */
 // Include both original names and normalized forms (stop_sign/octagonal_sign -> stop via normalizeEmojiName)
@@ -102,6 +102,7 @@ const UNICODE_NUMBER_EMOJIS: Record<string, number> = {
   '2️⃣': 1,
   '3️⃣': 2,
   '4️⃣': 3,
+  '5️⃣': 4,
 };
 
 /**

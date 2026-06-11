@@ -17,7 +17,7 @@ import { ClaudeEvent } from '../claude/cli.js';
 import type { PlatformClient, PlatformUser, PlatformPost, PlatformFile } from '../platform/index.js';
 import { SessionStore, PersistedSession, PersistedContextPrompt } from '../persistence/session-store.js';
 import { GitHubEmailsStore } from '../persistence/github-emails-store.js';
-import { WorktreeMode, type AgentPersonaConfig, type SkillsIndexConfig, type LimitsConfig, type ResolvedLimits, type ClaudeAccount, type PermissionMode, type OverheadVisibility, type PlatformOverhead, DEFAULT_OVERHEAD_VISIBILITY, resolveLimits, effectivePermissionMode } from '../config/index.js';
+import { WorktreeMode, type AgentPersonaConfig, type SkillsIndexConfig, type LimitsConfig, type ResolvedLimits, type ClaudeAccount, type PermissionMode, type OverheadVisibility, type PlatformOverhead, DEFAULT_OVERHEAD_VISIBILITY, resolveLimits, effectivePermissionMode, loadConfigWithMigration, saveConfig } from '../config/index.js';
 import { AccountPool } from '../claude/account-pool.js';
 import type { SessionInfo } from '../ui/types.js';
 import { CleanupScheduler } from '../cleanup/index.js';
@@ -68,6 +68,8 @@ export class SessionManager extends EventEmitter {
   /** Effective permission mode. Mutated via `setPermissionMode`. */
   private permissionMode: PermissionMode;
   private chromeEnabled: boolean;
+  /** Default model for new sessions (`!model --default`). Mutable at runtime. */
+  private defaultModel?: string;
   private worktreeMode: WorktreeMode;
   private threadLogsEnabled: boolean;
   private threadLogsRetentionDays: number;
@@ -140,6 +142,7 @@ export class SessionManager extends EventEmitter {
     claudeAccounts?: ClaudeAccount[],
     agentPersona?: AgentPersonaConfig,
     skillsIndex?: SkillsIndexConfig,
+    defaultModel?: string,
   ) {
     super();
     this.workingDir = workingDir;
@@ -158,6 +161,7 @@ export class SessionManager extends EventEmitter {
     this.accountPool = new AccountPool(claudeAccounts);
     this.agentPersona = agentPersona;
     this.skillsIndex = skillsIndex;
+    this.defaultModel = defaultModel;
 
     // Create background tasks (started in initialize())
     this.sessionMonitor = new SessionMonitor({
@@ -298,6 +302,7 @@ export class SessionManager extends EventEmitter {
       flushDelayMs: this.limits.flushDelayMs,
       agentPersona: this.agentPersona,
       skillsIndex: this.skillsIndex,
+      defaultModel: this.defaultModel,
     };
 
     const state: SessionState = {
@@ -331,6 +336,7 @@ export class SessionManager extends EventEmitter {
       // Persistence
       persistSession: (s) => this.persistSession(s),
       unpersistSession: (sid) => this.unpersistSession(sid),
+      setDefaultModel: (model) => this.setDefaultModel(model),
 
       // UI updates
       updateSessionHeader: (s) => this.updateSessionHeader(s),
@@ -678,6 +684,7 @@ export class SessionManager extends EventEmitter {
       queuedUserMessages: session.queuedUserMessages,
       mode: session.mode,
       channelId: session.channelId,
+      modelOverride: session.modelOverride,
     };
     this.sessionStore.save(session.sessionId, state);
   }
@@ -771,6 +778,31 @@ export class SessionManager extends EventEmitter {
 
   setChromeEnabled(value: boolean): void {
     this.chromeEnabled = value;
+  }
+
+  /** The default model new sessions spawn under (`!model --default`). */
+  getDefaultModel(): string | undefined {
+    return this.defaultModel;
+  }
+
+  /**
+   * Set (or clear, with null) the default model for NEW sessions and persist
+   * it to config.yaml. Existing sessions are unaffected — they keep their own
+   * `modelOverride`. Persistence is best-effort; the in-memory value always
+   * takes effect for sessions started later this process.
+   */
+  setDefaultModel(model: string | null): void {
+    this.defaultModel = model ?? undefined;
+    try {
+      const cfg = loadConfigWithMigration();
+      if (cfg) {
+        if (model) cfg.defaultModel = model;
+        else delete cfg.defaultModel;
+        saveConfig(cfg);
+      }
+    } catch (err) {
+      log.warn(`Failed to persist defaultModel: ${err}`);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1174,6 +1206,16 @@ export class SessionManager extends EventEmitter {
     const session = this.findSessionByThreadId(threadId);
     if (!session) return;
     await commands.setSessionPermissionMode(session, username, mode, this.getContext());
+  }
+
+  /**
+   * Show the `!model` picker for an active session. `setDefault` arms the
+   * eventual pick to also persist the bot-wide default. Session owner only.
+   */
+  async showModelPicker(threadId: string, username: string, setDefault: boolean): Promise<void> {
+    const session = this.findSessionByThreadId(threadId);
+    if (!session) return;
+    await commands.showModelPicker(session, username, setDefault, this.getContext());
   }
 
   /**

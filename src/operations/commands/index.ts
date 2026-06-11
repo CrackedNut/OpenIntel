@@ -25,6 +25,10 @@ export {
   // Permission management
   setSessionPermissionMode,
 
+  // Model selection (`!model`)
+  showModelPicker,
+  applyModelPick,
+
   // Message approval
   requestMessageApproval,
 

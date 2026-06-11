@@ -48,6 +48,11 @@ export interface SessionConfig {
   /** Streaming flush cadence in ms (default: 500). Lower = snappier updates. */
   flushDelayMs?: number;
   /**
+   * Default model for new sessions (`!model --default`), passed to
+   * `claude --model`. Undefined → let `claude` resolve its own default.
+   */
+  defaultModel?: string;
+  /**
    * Optional Hermes-style persona prepended to every session's
    * `--append-system-prompt`. See `AgentPersonaConfig` in `src/config/types.ts`
    * for fields. Resolved at file-read time inside `buildAgentPersonaText`
@@ -160,6 +165,12 @@ export interface SessionOperations {
 
   /** Remove session from persistence */
   unpersistSession(sessionId: string): void;
+
+  /**
+   * Set (or clear, with null) the bot-wide default model for NEW sessions and
+   * persist it to config.yaml. Used by `!model --default`.
+   */
+  setDefaultModel(model: string | null): void;
 
   // ---------------------------------------------------------------------------
   // UI Updates

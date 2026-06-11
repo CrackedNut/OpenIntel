@@ -41,6 +41,8 @@ export function buildRestartCliOptions(
     mode: session.mode === 'channel' ? 'channel' : 'thread',
     // Keep MCP prompts in the session's actual channel (allChannels).
     channelId: session.channelId,
+    // Carry the session's model across restarts (!cd, !permissions, worktree).
+    model: session.modelOverride,
     chrome: ctx.chromeEnabled,
     platformConfig: platformMcpConfig,
     logSessionId: session.sessionId,

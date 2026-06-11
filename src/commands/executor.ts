@@ -299,6 +299,26 @@ const handlePermissions: CommandHandler = async (ctx, args) => {
 };
 
 /**
+ * Handle `!model` — post the numbered model picker for the user to react to.
+ * In-session only (there must be a session to set the model on). `--default`
+ * makes the eventual pick also persist as the bot-wide default.
+ */
+const handleModel: CommandHandler = async (ctx, args) => {
+  if (ctx.commandContext === 'first-message') {
+    // No active session yet — nothing to repoint. Tell the user.
+    await ctx.client.createPost(
+      `ℹ️ ${ctx.formatter.formatCode('!model')} works inside an active session. Start one, then run it.`,
+      ctx.replyTo,
+    );
+    return { handled: true };
+  }
+  if (!ctx.isAllowed) return { handled: true };
+  const setDefault = (args ?? '').trim().toLowerCase() === '--default';
+  await ctx.sessionManager.showModelPicker(ctx.threadId, ctx.username, setDefault);
+  return { handled: true };
+};
+
+/**
  * Parse `!thread` arguments: an optional topic plus an optional `-history`
  * (or `--history`) flag, which may appear anywhere in the arg string.
  *
@@ -652,6 +672,7 @@ handlers.set('kick', handleKick);
 handlers.set('github-email', handleGitHubEmail);
 handlers.set('cd', handleCd);
 handlers.set('permissions', handlePermissions);
+handlers.set('model', handleModel);
 handlers.set('thread', handleThread);
 handlers.set('worktree', handleWorktree);
 handlers.set('bug', handleBug);

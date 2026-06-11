@@ -730,7 +730,7 @@ describe('SessionManager', () => {
         'sessionDescription', 'sessionTags', 'pullRequestUrl', 'messageCount',
         'resumeFailCount', 'claudeAccountId', 'sessionHeaderMode',
         'queuedUserMessages',
-        'mode', 'channelId',
+        'mode', 'channelId', 'modelOverride',
       ]);
       expect(new Set(Object.keys(written))).toEqual(expectedKeys);
 

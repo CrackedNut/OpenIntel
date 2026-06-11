@@ -94,6 +94,14 @@ describe('parseCommand', () => {
       expect(result).toEqual({ command: 'permissions', args: 'interactive', match: '!permissions interactive' });
     });
 
+    test('parses !model (session picker, no args)', () => {
+      expect(parseCommand('!model')).toEqual({ command: 'model', match: '!model' });
+    });
+
+    test('parses !model --default (default picker)', () => {
+      expect(parseCommand('!model --default')).toEqual({ command: 'model', args: '--default', match: '!model --default' });
+    });
+
     test('parses !permission interactive (singular)', () => {
       const result = parseCommand('!permission interactive');
       expect(result).toEqual({ command: 'permissions', args: 'interactive', match: '!permission interactive' });

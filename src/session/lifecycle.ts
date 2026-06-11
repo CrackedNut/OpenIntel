@@ -1008,6 +1008,10 @@ export async function startSession(
     // platform-configured channelId.
     channelId: channelMode?.channelId ?? initialOptions?.originChannelId,
     permissionMode,
+    // New sessions spawn under the configured default model (if any). The
+    // session tracks it as `modelOverride` below so respawns (!cd, etc.) and
+    // resume keep it, and `!model` can change it per-session.
+    model: ctx.config.defaultModel,
     sessionId: claudeSessionId,
     resume: false,
     chrome: ctx.config.chromeEnabled,
@@ -1038,6 +1042,9 @@ export async function startSession(
     // back-compat shape of `Session` and `PersistedSession`.
     mode: channelMode ? 'channel' : undefined,
     channelId: channelMode?.channelId ?? initialOptions?.originChannelId,
+    // Effective session model: starts at the configured default, then `!model`
+    // can change it. Persisted so it survives restart; used by every respawn.
+    modelOverride: ctx.config.defaultModel,
     // `!thread <topic>` names the session up front; the auto-title metadata
     // pass skips sessions that already have a title.
     sessionTitle: initialOptions?.threadTopic?.substring(0, 80) || undefined,
@@ -1305,6 +1312,8 @@ export async function resumeSession(
     // live outside the home channel; MCP prompts must follow them there).
     channelId: state.channelId,
     permissionMode: resumePermissionMode,
+    // Restore the session's model override so resume keeps the chosen model.
+    model: state.modelOverride,
     sessionId: state.claudeSessionId,
     resume: true,
     chrome: ctx.config.chromeEnabled,
@@ -1376,6 +1385,7 @@ export async function resumeSession(
     // the registry's `findByChannelId` lookup matches against on resume.
     mode: state.mode,
     channelId: state.channelId,
+    modelOverride: state.modelOverride,
     // Thread logger for persisting events to disk (appends to existing log)
     threadLogger: createThreadLogger(platformId, state.threadId, state.claudeSessionId, {
       enabled: ctx.config.threadLogsEnabled ?? true,

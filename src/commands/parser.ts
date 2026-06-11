@@ -69,6 +69,10 @@ const COMMAND_PATTERNS: Array<[string, RegExp]> = [
   // legacy `interactive` (→ default) and `skip` (→ bypass) aliases.
   ['permissions', /^!permissions?\s+(default|auto|bypass|interactive|skip)\s*$/i],
 
+  // Model picker — `!model` (session only) or `!model --default` (also saves
+  // the bot-wide default). Captures the optional `--default` flag.
+  ['model', /^!model(?:\s+(--default))?\s*$/i],
+
   // Updates
   ['update', /^!update(?:\s+(now|defer))?\s*$/i],
 

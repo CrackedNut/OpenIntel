@@ -132,6 +132,13 @@ export interface ClaudeCliOptions {
    * Defaults to `'default'` when omitted.
    */
   permissionMode?: PermissionMode;
+  /**
+   * Model to run this session under, passed straight to `claude --model`
+   * (an alias like `opus`/`sonnet`/`haiku` or a full model id). Session-scoped
+   * — it never touches the user's persisted Claude default. Omit to inherit
+   * whatever the spawned `claude` resolves by default.
+   */
+  model?: string;
   sessionId?: string;  // Claude session ID (UUID) for --session-id or --resume
   resume?: boolean;    // If true, use --resume instead of --session-id
   chrome?: boolean;    // If true, enable Chrome integration with --chrome
@@ -531,6 +538,12 @@ export class ClaudeCli extends EventEmitter {
       } else {
         args.push('--session-id', this.options.sessionId);
       }
+    }
+
+    // Per-session model override (`!model`). `--model` is session-scoped and
+    // never writes the user's persisted Claude default.
+    if (this.options.model) {
+      args.push('--model', this.options.model);
     }
 
     // Resolve the effective permission mode. New `permissionMode` wins; legacy

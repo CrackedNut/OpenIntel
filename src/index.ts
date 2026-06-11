@@ -589,6 +589,7 @@ async function startWithoutDaemon() {
     config.claudeAccounts,  // Claude account pool (undefined = single-account mode)
     config.agentPersona,  // Hermes-style persona/directives/projects-index prepend
     config.skillsIndex,  // ~/.claude/skills/* index injected into system prompt
+    config.defaultModel,  // Default model for new sessions (`!model --default`)
   );
 
   // Set sticky message customization from config

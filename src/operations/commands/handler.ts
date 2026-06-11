@@ -25,7 +25,9 @@ import {
   APPROVAL_EMOJIS,
   DENIAL_EMOJIS,
   ALLOW_ALL_EMOJIS,
+  NUMBER_EMOJIS,
 } from '../../utils/emoji.js';
+import { MODEL_CHOICES, modelLabel } from './models.js';
 import {
   collectBugReportContext,
   formatIssueBody,
@@ -888,6 +890,121 @@ export async function setSessionPermissionMode(
     `${formatter.formatItalic('Claude Code restarted.')}`,
   );
   sessionLog(session).info(`🔐 Permission mode set to "${mode}" by @${username}`);
+}
+
+// ---------------------------------------------------------------------------
+// Model selection (`!model`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Post the numbered model picker and arm it for a reaction. Session owner
+ * only. `setDefault` (from `!model --default`) makes the eventual pick also
+ * persist as the bot-wide default for new sessions.
+ */
+export async function showModelPicker(
+  session: Session,
+  username: string,
+  setDefault: boolean,
+  _ctx: SessionContext,
+): Promise<void> {
+  if (!await requireSessionOwner(session, username, 'change the model')) return;
+  const formatter = session.platform.getFormatter();
+
+  const list = MODEL_CHOICES.map(
+    (m, i) => `${formatter.formatBold(`${i + 1}.`)} ${m.label}`,
+  ).join('\n');
+  const header = setDefault
+    ? `🤖 ${formatter.formatBold('Pick the default model')} — applies to new sessions too`
+    : `🤖 ${formatter.formatBold('Pick a model for this session')}`;
+  const footer = setDefault
+    ? 'React with a number. Saved as the bot-wide default.'
+    : 'React with a number. This session only — your default is never touched.';
+  const body = `${header}\n${list}\n${formatter.formatItalic(footer)}`;
+
+  // One reaction per choice (1️⃣…5️⃣). Reply target is the session thread/channel.
+  const reactions = [...NUMBER_EMOJIS].slice(0, MODEL_CHOICES.length);
+  const replyTo = session.mode === 'channel' ? session.channelId : session.threadId;
+  const picker = await session.platform.createInteractivePost(body, reactions, replyTo);
+  session.pendingModelPick = { postId: picker.id, setDefault };
+  session.threadLogger?.logCommand('model', setDefault ? '--default (picker)' : '(picker)', username);
+}
+
+/**
+ * Apply a number reaction to the pending model picker. Returns true when the
+ * reaction was consumed (matched the pending picker), false to let other
+ * handlers try. Session owner only.
+ */
+export async function applyModelPick(
+  session: Session,
+  postId: string,
+  emojiIndex: number,
+  username: string,
+  ctx: SessionContext,
+): Promise<boolean> {
+  const pending = session.pendingModelPick;
+  if (!pending || pending.postId !== postId) return false;
+  if (emojiIndex < 0 || emojiIndex >= MODEL_CHOICES.length) return false;
+  if (!await requireSessionOwner(session, username, 'change the model')) return true;
+
+  const choice = MODEL_CHOICES[emojiIndex];
+  session.pendingModelPick = undefined;
+
+  // `!model --default` also persists the bot-wide default for new sessions.
+  if (pending.setDefault) {
+    ctx.ops.setDefaultModel(choice.value);
+  }
+
+  await setSessionModel(session, choice.value, username, pending.setDefault, ctx);
+  return true;
+}
+
+/**
+ * Set the session's model and respawn Claude under it. Mirrors
+ * `setSessionPermissionMode`: keep the current permission mode, resume the
+ * conversation if Claude has already responded.
+ */
+async function setSessionModel(
+  session: Session,
+  model: string | null,
+  username: string,
+  wasDefault: boolean,
+  ctx: SessionContext,
+): Promise<void> {
+  session.modelOverride = model ?? undefined;
+  sessionLog(session).info(`🤖 Setting model to "${model ?? 'default (inherit)'}"`);
+  session.threadLogger?.logCommand('model', model ?? 'default', username);
+
+  const canResume = session.lifecycle.hasClaudeResponded;
+  const cliOptions: ClaudeCliOptions = {
+    ...commonRestartCliOptions(session, ctx),
+    workingDir: session.workingDir,
+    // Preserve the session's current permission mode across the model swap.
+    permissionMode: effectivePermissionMode({
+      override: session.permissionModeOverride,
+      sessionHasInteractiveOverride: session.forceInteractivePermissions,
+      botWideMode: ctx.config.permissionMode,
+    }),
+    model: session.modelOverride,
+    sessionId: session.claudeSessionId,
+    resume: canResume,
+  };
+
+  const success = await restartClaudeSession(session, cliOptions, ctx, `Set model to ${model ?? 'default'}`);
+  if (!success) return;
+
+  await updateSessionHeader(session, ctx);
+  ctx.ops.persistSession(session);
+
+  const formatter = session.platform.getFormatter();
+  const scope = wasDefault
+    ? `${formatter.formatBold('default')} (and this session)`
+    : 'this session';
+  await post(
+    session,
+    'secure',
+    `🤖 ${formatter.formatBold(`Model: ${modelLabel(model)}`)} set for ${scope} by ${formatter.formatUserMention(username)}\n` +
+    `${formatter.formatItalic('Claude Code restarted.')}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

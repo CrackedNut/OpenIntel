@@ -21,7 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.4] - 2026-06-11
+## [2.1.5] - 2026-06-11
+
+### Added
+- **`!model` — interactive model picker.** Run `!model` in a session and the bot posts a numbered list of models (1️⃣–5️⃣); react with a number to switch. The pick is **session-only** and passed to `claude --model` on respawn — it **never** changes your saved default. `!model --default` opens the same picker but also persists the choice as the bot-wide default for new sessions (saved to `config.yaml`). The session's model is persisted, so it survives `!cd`, `!permissions`, and bot restarts. Works on Mattermost, Slack, and Discord (5️⃣ was added to the shared number-emoji set). The model list lives in `src/operations/commands/models.ts` — edit it to change the offerings (currently Opus 4.8 / Sonnet 4.6 / Haiku 4.5 / Fable 5 / Default-inherit).
 
 ### Fixed
 - **`!steer` no longer ends the session.** SIGINT makes Claude emit a final `result` event and then exit; the result handler was flushing the steer queue at that moment, delivering it into the dying process and flipping the session back to `active` — so the imminent exit hit the normal-end path and killed the session (the next message then resumed it with a jarring "resumed after bot restart" notice). The queue is now left intact while an interrupt is in flight, so the session pauses cleanly and the steer drains on resume.
