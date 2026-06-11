@@ -1972,11 +1972,13 @@ describe('handleMessage', () => {
       expect(session.sendFollowUp).toHaveBeenCalled();
     });
 
-    test('in-session command reply at channel root targets channel root, not channelId (Invalid RootId regression)', async () => {
+    test('in-session command reply at channel root passes the channelId target (client resolves to channel root)', async () => {
       // Active channel-mode session: bare commands route down the in-session
-      // path where ctx.threadId carries the channelId. The reply target must
-      // be undefined (channel root) — passing the channelId as root_id is
-      // what Mattermost rejects with 400 "Invalid RootId".
+      // path where ctx.threadId carries the channelId. The reply target IS
+      // the channelId — the platform clients recognize channel targets and
+      // post root-less in that channel (this is what routes replies to the
+      // right channel under allChannels; the old 400 "Invalid RootId" class
+      // is prevented inside the clients now).
       const channelSession = { sessionId: 'mm:c-1' } as any;
       (session.findChannelSession as any).mockImplementation(() => channelSession);
 
@@ -1999,7 +2001,7 @@ describe('handleMessage', () => {
       expect(calls.length).toBeGreaterThan(0);
       const [msg, target] = calls[0];
       expect(msg).toContain('!queue');
-      expect(target).toBeUndefined();
+      expect(target).toBe('c-1');
     });
 
     test('!thread typed in an active channel-mode session spawns a new thread session', async () => {
@@ -2021,13 +2023,14 @@ describe('handleMessage', () => {
       (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
-      // A 🧵 anchor post was created at channel root (undefined target).
+      // A 🧵 anchor post was created at the session channel's root (the
+      // channelId target — clients resolve it to a root-less post).
       const anchorCall = (client.createPost as any).mock.calls.find(
         ([msg]: [string]) => msg.includes('🧵')
       );
       expect(anchorCall).toBeDefined();
       expect(anchorCall[0]).toContain('fix the login bug');
-      expect(anchorCall[1]).toBeUndefined();
+      expect(anchorCall[1]).toBe('c-1');
 
       // A new thread-mode session starts, anchored at the anchor post.
       expect(session.startSession).toHaveBeenCalled();
@@ -2038,6 +2041,7 @@ describe('handleMessage', () => {
       expect(startArgs[6]).toMatchObject({
         forceThreadMode: true,
         threadTopic: 'fix the login bug',
+        originChannelId: 'c-1',
       });
     });
 
@@ -2141,7 +2145,7 @@ describe('handleMessage', () => {
       expect(startArgs[6].channelMode).toBeUndefined();
     });
 
-    test('direct error posts go to channel root (no thread reply) for channel-root posts', async () => {
+    test('direct error posts target the channel (channelId target) for channel-root posts', async () => {
       (client.isBotMentioned as any).mockImplementation(() => true);
       (client.extractPrompt as any).mockImplementation(() => '');
       (client.isUserAllowed as any).mockImplementation(() => true);
@@ -2166,16 +2170,16 @@ describe('handleMessage', () => {
       const createPostCalls = (client.createPost as any).mock.calls;
       const errorCall = createPostCalls.find(([msg]: [string]) => msg.includes('Mention me'));
       expect(errorCall).toBeDefined();
-      expect(errorCall[1]).toBeUndefined();
+      expect(errorCall[1]).toBe('c-7');
     });
   });
 
   // allChannels: posts arriving from channels OTHER than the home channel.
-  // Channel mode is exclusive to the home channel — foreign root mentions
-  // must start THREAD sessions anchored at the mention post, so replies
-  // thread off it in the right channel.
+  // Every channel behaves like the home channel — a foreign root mention
+  // starts THAT channel's shared channel-mode session, with the origin
+  // channel recorded for the MCP child; !thread opts out per conversation.
   describe('allChannels (foreign channels)', () => {
-    test('root mention in a foreign channel starts a thread session anchored at the mention', async () => {
+    test('root mention in a foreign channel starts that channel\'s channel-mode session', async () => {
       const post: PlatformPost = {
         id: 'p-foreign-1',
         platformId: 'test',
@@ -2189,18 +2193,16 @@ describe('handleMessage', () => {
 
       await handleMessage(client, session, post, user, options); // home stays 'channel1'
 
-      // Never treated as channel mode...
-      expect(session.findChannelSession).not.toHaveBeenCalled();
-      // ...and the session anchors at the mention post with the origin
-      // channel recorded for the MCP child.
+      // Routed as channel mode, keyed by the FOREIGN channel id.
+      expect(session.findChannelSession).toHaveBeenCalledWith('test-platform', 'c-foreign');
       expect(session.startSession).toHaveBeenCalledWith(
         { prompt: 'help me out', files: undefined },
         'allowed-user',
-        'p-foreign-1',
+        'c-foreign',
         'test-platform',
         'User',
         'p-foreign-1',
-        { originChannelId: 'c-foreign' }
+        { originChannelId: 'c-foreign', channelMode: { channelId: 'c-foreign' } }
       );
     });
 

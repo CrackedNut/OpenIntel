@@ -865,7 +865,9 @@ export async function startSession(
   // (non-existent) thread rooted at the channelId. `replyToPostId` carries
   // the channelId here, which Mattermost would otherwise treat as an
   // invalid root_id and orphan the post.
-  const startPostReplyTo = channelMode ? undefined : replyToPostId;
+  // Channel mode: target the session's channel root (the client resolves
+  // a channelId target to a root-less post in that channel).
+  const startPostReplyTo = channelMode ? channelMode.channelId : replyToPostId;
   let startPost: { id: string } | undefined;
   if (!skipHeaderPost) {
     startPost = await withErrorHandling(
@@ -887,7 +889,7 @@ export async function startSession(
   // We'll set up a proper interval-based typing indicator once the session is
   // created. Channel-mode: actualThreadId carries the channelId, which is not
   // a valid parent post id — send channel-level typing instead.
-  platform.sendTyping(channelMode ? undefined : actualThreadId);
+  platform.sendTyping(actualThreadId);
 
   // Generate a unique session ID for this Claude session
   const claudeSessionId = randomUUID();

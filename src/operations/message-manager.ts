@@ -470,14 +470,14 @@ export class MessageManager {
       // `root_id = channelId`, which Mattermost stores in an orphan
       // thread that never renders in the channel feed.
       createPost: async (content, options) => {
-        const replyTo = this.session.mode === 'channel' ? undefined : this.threadId;
+        const replyTo = this.threadId;
         const post = await this.platform.createPost(content, replyTo);
         this.registerPost(post.id, options);
         this.updateLastMessage(post);
         return post;
       },
       createInteractivePost: async (content, reactions, options) => {
-        const replyTo = this.session.mode === 'channel' ? undefined : this.threadId;
+        const replyTo = this.threadId;
         const post = await this.platform.createInteractivePost(content, reactions, replyTo);
         this.registerPost(post.id, options);
         this.updateLastMessage(post);
@@ -1106,7 +1106,7 @@ export class MessageManager {
     // Post feedback for skipped files. Channel-mode sessions get `undefined`
     // here so the feedback lands at channel root rather than orphaning in a
     // non-existent thread.
-    const skippedReplyTo = this.session.mode === 'channel' ? undefined : this.threadId;
+    const skippedReplyTo = this.threadId;
     await postSkippedFilesFeedback(this.platform, skippedReplyTo, skippedFiles);
 
     // Update activity time

@@ -363,16 +363,22 @@ const handleThread: CommandHandler = async (ctx, args) => {
     // A fresh root post is the new thread's anchor. We cannot thread off
     // the user's `!thread` post here — it was consumed by this command and
     // threading off it would bury the new session under a bare "!thread".
+    // Target the channel session's own channel (ctx.threadId carries the
+    // channelId here; the client resolves it to a root-less post).
     const anchor = await ctx.client.createPost(
       `🧵 ${ctx.formatter.formatBold(topic ?? 'Thread session')} — started by ${ctx.formatter.formatUserMention(ctx.username)}`,
-      undefined,
+      ctx.threadId,
     );
 
     let prompt =
       topic ??
       'The user opened a fresh thread session from the channel. Briefly confirm you are ready and ask what they want to work on.';
     if (includeHistory) {
-      const historyContext = await buildChannelHistoryContext(ctx.client, ctx.triggeringPostId);
+      const historyContext = await buildChannelHistoryContext(
+        ctx.client,
+        ctx.triggeringPostId,
+        ctx.threadId, // the channel session's channel
+      );
       if (historyContext) prompt = `${historyContext}${prompt}`;
     }
 
@@ -383,7 +389,9 @@ const handleThread: CommandHandler = async (ctx, args) => {
       platformId,
       undefined,
       ctx.triggeringPostId,
-      { forceThreadMode: true, threadTopic: topic },
+      // originChannelId keeps the MCP child and reply routing in the
+      // channel the !thread came from (no-op for the home channel).
+      { forceThreadMode: true, threadTopic: topic, originChannelId: ctx.threadId },
     );
     return { handled: true };
   }

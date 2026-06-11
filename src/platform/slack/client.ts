@@ -837,7 +837,10 @@ export class SlackClient extends BasePlatformClient {
       unfurl_media: shouldUnfurl,
     };
 
-    if (threadId) {
+    // Channel-mode sessions pass their channelId as the reply target —
+    // that means "post at channel root", never a thread_ts (a channel id
+    // is not a valid message timestamp).
+    if (threadId && threadId !== this.channelId) {
       body.thread_ts = threadId;
     }
 
@@ -1037,13 +1040,14 @@ export class SlackClient extends BasePlatformClient {
    * (joins, pins, …) are skipped as system noise.
    */
   async getChannelHistory(
-    options?: { limit?: number; excludeBotMessages?: boolean }
+    options?: { limit?: number; excludeBotMessages?: boolean; channelId?: string }
   ): Promise<ThreadMessage[]> {
     try {
       const limit = options?.limit ?? 30;
+      const channel = options?.channelId ?? this.channelId;
       const response = await this.api<ConversationsHistoryResponse>(
         'GET',
-        `conversations.history?channel=${this.channelId}&limit=${Math.min(limit, 100)}`
+        `conversations.history?channel=${channel}&limit=${Math.min(limit, 100)}`
       );
 
       const messages: ThreadMessage[] = [];

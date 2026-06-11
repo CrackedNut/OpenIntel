@@ -420,11 +420,13 @@ export interface MattermostPlatformConfig extends PlatformInstanceConfig {
   allowedUsers: string[];
   /**
    * When true, the bot answers @mentions in EVERY channel it is a member of
-   * (including group/DM channels), not just `channelId`. Foreign channels
-   * always run thread-mode sessions anchored at the mention post; channel
-   * mode (and the sticky message, missed-message recovery, etc.) remains
-   * exclusive to the home `channelId`. Authorization is unchanged: only
-   * `allowedUsers` can start sessions anywhere. Default false.
+   * (including group/DM channels), not just `channelId`. Every channel
+   * behaves like the home channel: a root @mention starts that channel's
+   * shared channel-mode session and replies land at the channel root;
+   * `!thread` opts a conversation into its own thread. The sticky message
+   * and missed-message recovery remain exclusive to the home `channelId`.
+   * Authorization is unchanged: only `allowedUsers` can start sessions
+   * anywhere. Default false.
    */
   allChannels?: boolean;
   /**

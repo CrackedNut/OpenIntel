@@ -267,7 +267,7 @@ export function startTyping(session: Session): void {
   // Channel-mode: threadId carries the channelId, which is not a valid
   // parent post id — send channel-level typing (no parent) instead, same
   // rule as the post-helpers' reply target.
-  const typingParent = session.mode === 'channel' ? undefined : session.threadId;
+  const typingParent = session.threadId;
   session.platform.sendTyping(typingParent);
   session.timers.typingTimer = setInterval(() => {
     session.platform.sendTyping(typingParent);

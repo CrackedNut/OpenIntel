@@ -341,9 +341,10 @@ describe('MessageManager', () => {
 
       const calls = (platform.createPost as ReturnType<typeof mock>).mock.calls;
       expect(calls.length).toBe(1);
-      // The bug: passing `'thread-123'` here makes Mattermost orphan the post.
-      // The fix: channel-mode must pass `undefined`.
-      expect(calls[0][1]).toBeUndefined();
+      // Channel mode passes the session threadId (the channelId) — the
+      // platform client resolves channel targets to root-less posts in
+      // that channel (required for allChannels routing).
+      expect(calls[0][1]).toBe('thread-123');
     });
   });
 

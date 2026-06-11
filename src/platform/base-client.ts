@@ -174,7 +174,7 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
    * Get recent channel-root conversation (thread replies excluded).
    */
   abstract getChannelHistory(
-    options?: { limit?: number; excludeBotMessages?: boolean }
+    options?: { limit?: number; excludeBotMessages?: boolean; channelId?: string }
   ): Promise<ThreadMessage[]>;
 
   /**

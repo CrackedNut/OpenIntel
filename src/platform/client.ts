@@ -111,9 +111,9 @@ export interface PlatformClient extends EventEmitter {
   getBotName(): string;
 
   /**
-   * The configured home channel id. Channel-mode sessions are exclusive to
-   * this channel; with `allChannels` (Mattermost) every other channel the
-   * bot is a member of runs thread-mode sessions.
+   * The configured home channel id. The sticky message and missed-message
+   * recovery are exclusive to this channel; with `allChannels` (Mattermost)
+   * every channel the bot is a member of gets its own channel-mode session.
    */
   getHomeChannelId(): string;
 
@@ -236,7 +236,7 @@ export interface PlatformClient extends EventEmitter {
    * @returns Array of messages in chronological order (oldest first)
    */
   getChannelHistory(
-    options?: { limit?: number; excludeBotMessages?: boolean }
+    options?: { limit?: number; excludeBotMessages?: boolean; channelId?: string }
   ): Promise<ThreadMessage[]>;
 
   // ============================================================================

@@ -462,3 +462,44 @@ describe('MattermostClient allChannels', () => {
     expect((c as unknown as { lastProcessedPostId: string | null }).lastProcessedPostId).toBe('p-home');
   });
 });
+
+describe('MattermostClient channel-target replies', () => {
+  it('home channelId as reply target posts at home channel root (no root_id)', async () => {
+    fetchResponder = () =>
+      jsonResponse({ id: 'p', channel_id: 'c-123', user_id: 'bot', message: 'm', root_id: '', create_at: 1 });
+    await makeClient().createPost('channel-mode reply', 'c-123');
+    const body = fetchCalls[0].body as Record<string, unknown>;
+    expect(body.channel_id).toBe('c-123');
+    expect(body.root_id).toBeUndefined();
+  });
+
+  it('foreign channelId target (learned at intake) posts at that channel root', async () => {
+    fetchResponder = (url) => {
+      if (url.includes('/users/')) return jsonResponse({ id: 'u1', username: 'alice' });
+      return jsonResponse({ id: 'p', channel_id: 'c-other', user_id: 'bot', message: 'm', root_id: '', create_at: 2 });
+    };
+    const c = makeClient({ allChannels: true });
+    injectPostedEvent(c, { id: 'p-f', channel_id: 'c-other', user_id: 'u1', message: '@claude hi' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await c.createPost('channel-mode reply', 'c-other');
+    const postCall = fetchCalls.find((f) => f.url.endsWith('/posts') && f.method === 'POST');
+    const body = postCall!.body as Record<string, unknown>;
+    expect(body.channel_id).toBe('c-other');
+    expect(body.root_id).toBeUndefined();
+  });
+
+  it('unseen foreign channelId target resolves via GET /channels fallback', async () => {
+    fetchResponder = (url) => {
+      if (url.includes('/posts/c-resumed')) return errorResponse(404, 'not a post');
+      if (url.endsWith('/channels/c-resumed')) return jsonResponse({ id: 'c-resumed' });
+      return jsonResponse({ id: 'p', channel_id: 'c-resumed', user_id: 'bot', message: 'm', root_id: '', create_at: 2 });
+    };
+    const c = makeClient({ allChannels: true });
+    await c.createPost('reply after restart', 'c-resumed');
+    const postCall = fetchCalls.find((f) => f.url.endsWith('/posts') && f.method === 'POST');
+    const body = postCall!.body as Record<string, unknown>;
+    expect(body.channel_id).toBe('c-resumed');
+    expect(body.root_id).toBeUndefined();
+  });
+});

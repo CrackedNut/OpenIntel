@@ -93,31 +93,58 @@ export class MattermostClient extends BasePlatformClient {
   }
 
   /**
-   * Resolve which channel a reply target lives in. Synchronous index-only
-   * variant for hot paths that can't await (e.g. typing indicator).
+   * Is this reply target actually a CHANNEL (channel-mode sessions use
+   * their channelId as the session/reply key)? Posting must then target
+   * the channel root — Mattermost rejects a channelId as root_id with
+   * 400 "Invalid RootId".
    */
-  private resolveChannelSync(threadId?: string): string {
-    if (!threadId || threadId === this.channelId) return this.channelId;
-    return this.threadChannelIndex.get(threadId) ?? this.channelId;
+  private isChannelTarget(threadId: string): boolean {
+    return threadId === this.channelId
+      || this.threadChannelIndex.get(threadId) === threadId;
   }
 
   /**
-   * Resolve which channel a reply target lives in, falling back to a post
-   * lookup for roots we never saw arrive (restart, recovery). Unknown or
-   * unfetchable targets resolve to the home channel — exactly the pre-
-   * allChannels behavior.
+   * Resolve a reply target synchronously (index-only) for hot paths that
+   * can't await (e.g. typing indicator).
    */
-  private async resolveChannel(threadId?: string): Promise<string> {
-    if (!threadId || threadId === this.channelId) return this.channelId;
+  private resolveTargetSync(threadId?: string): { channelId: string; rootId?: string } {
+    if (!threadId) return { channelId: this.channelId };
+    if (this.isChannelTarget(threadId)) return { channelId: threadId };
+    return {
+      channelId: this.threadChannelIndex.get(threadId) ?? this.channelId,
+      rootId: threadId,
+    };
+  }
+
+  /**
+   * Resolve a reply target, falling back to a post lookup for roots we
+   * never saw arrive (restart, recovery), then to a channel lookup (a
+   * channel-mode session resumed before any post arrived). Unknown or
+   * unfetchable targets resolve to a home-channel reply — exactly the
+   * pre-allChannels behavior.
+   */
+  private async resolveTarget(threadId?: string): Promise<{ channelId: string; rootId?: string }> {
+    if (!threadId) return { channelId: this.channelId };
+    if (this.isChannelTarget(threadId)) return { channelId: threadId };
     const indexed = this.threadChannelIndex.get(threadId);
-    if (indexed) return indexed;
-    if (!this.allChannels) return this.channelId;
+    if (indexed) return { channelId: indexed, rootId: threadId };
+    // Single-channel mode: every reply target lives in the home channel,
+    // no lookups needed (pre-allChannels fast path).
+    if (!this.allChannels) return { channelId: this.channelId, rootId: threadId };
     try {
       const post = await this.api<MattermostPost>('GET', `/posts/${threadId}`);
       this.indexThreadChannel(threadId, post.channel_id);
-      return post.channel_id;
+      return { channelId: post.channel_id, rootId: threadId };
     } catch {
-      return this.channelId;
+      // Not a post — perhaps a channel we haven't seen traffic from yet
+      // (e.g. a channel-mode session resumed right after a restart).
+      try {
+        const channel = await this.api<{ id: string }>('GET', `/channels/${threadId}`);
+        this.indexThreadChannel(channel.id, channel.id);
+        return { channelId: channel.id };
+      } catch {
+        return { channelId: this.channelId, rootId: threadId };
+      }
     }
   }
 
@@ -333,13 +360,15 @@ export class MattermostClient extends BasePlatformClient {
     message: string,
     threadId?: string
   ): Promise<PlatformPost> {
+    // The reply target decides everything: a post id replies in its thread
+    // (Mattermost rejects posts whose channel_id doesn't match the root
+    // post's channel), a channelId posts at that channel's root (a
+    // channelId as root_id would be a 400 "Invalid RootId").
+    const target = await this.resolveTarget(threadId);
     const request: CreatePostRequest = {
-      // Mattermost rejects posts whose channel_id doesn't match the root
-      // post's channel, so the reply target decides the channel.
-      channel_id: await this.resolveChannel(threadId),
+      channel_id: target.channelId,
       message,
-      // Only include root_id if it's a non-empty string (Mattermost rejects empty string)
-      root_id: threadId || undefined,
+      root_id: target.rootId,
     };
     const post = await this.api<MattermostPost>('POST', '/posts', request);
     return this.normalizePlatformPost(post);
@@ -404,11 +433,12 @@ export class MattermostClient extends BasePlatformClient {
     options?: { caption?: string; filename?: string },
   ): Promise<{ postId: string; fileId: string }> {
     const filename = sanitizeFilename(options?.filename ?? filePath);
+    const uploadTarget = await this.resolveTarget(threadId);
     const result = await uploadFileMattermost({
       url: this.url,
       token: this.token,
-      channelId: await this.resolveChannel(threadId),
-      threadId,
+      channelId: uploadTarget.channelId,
+      threadId: uploadTarget.rootId ?? '',
       filePath,
       filename,
       caption: options?.caption,
@@ -531,15 +561,16 @@ export class MattermostClient extends BasePlatformClient {
    * the channel-level dialogue as a channel-mode session sees it.
    */
   async getChannelHistory(
-    options?: { limit?: number; excludeBotMessages?: boolean }
+    options?: { limit?: number; excludeBotMessages?: boolean; channelId?: string }
   ): Promise<ThreadMessage[]> {
     try {
+      const channel = options?.channelId ?? this.channelId;
       // per_page is post count before filtering; fetch the API max so the
       // root-post filter still leaves enough conversation in busy channels.
       const response = await this.api<{
         order: string[];
         posts: Record<string, MattermostPost>;
-      }>('GET', `/channels/${this.channelId}/posts?page=0&per_page=100`);
+      }>('GET', `/channels/${channel}/posts?page=0&per_page=100`);
 
       const messages: ThreadMessage[] = [];
       for (const postId of response.order) {
@@ -690,7 +721,11 @@ export class MattermostClient extends BasePlatformClient {
 
         // Learn threadRoot → channel so replies/typing/uploads route to the
         // right channel: root posts map their own id, replies their root.
+        // The identity entry marks the id AS a channel — `createPost` uses
+        // it to recognize channel-root targets (channel-mode sessions pass
+        // their channelId as the reply target).
         this.indexThreadChannel(post.root_id || post.id, post.channel_id);
+        this.indexThreadChannel(post.channel_id, post.channel_id);
 
         // Track last processed post for message recovery after disconnection.
         // Home channel only — recovery queries the home channel and a
@@ -883,15 +918,17 @@ export class MattermostClient extends BasePlatformClient {
       return;
     }
 
+    // Sync resolution only (no await in the WS hot path): the index is
+    // warm whenever typing fires, because the user message that triggered
+    // it was just indexed at intake. Channel targets (channel-mode
+    // sessions pass their channelId) get channel-level typing, no parent.
+    const target = this.resolveTargetSync(parentId);
     this.ws.send(JSON.stringify({
       action: 'user_typing',
       seq: Date.now(),
       data: {
-        // Sync resolution only (no await in the WS hot path): the index is
-        // warm whenever typing fires, because the user message that
-        // triggered it was just indexed at intake.
-        channel_id: this.resolveChannelSync(parentId),
-        parent_id: parentId || '',
+        channel_id: target.channelId,
+        parent_id: target.rootId || '',
       },
     }));
   }

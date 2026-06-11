@@ -29,10 +29,11 @@ const MAX_TOTAL_CHARS = 8000;
 export async function buildChannelHistoryContext(
   client: PlatformClient,
   excludePostId?: string,
+  channelId?: string,
 ): Promise<string | undefined> {
   let messages;
   try {
-    messages = await client.getChannelHistory({ limit: HISTORY_LIMIT });
+    messages = await client.getChannelHistory({ limit: HISTORY_LIMIT, channelId });
   } catch {
     return undefined;
   }

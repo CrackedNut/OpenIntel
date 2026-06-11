@@ -197,17 +197,19 @@ describe('post() factory function', () => {
     expect(session.lastMessageId).toBe('post-123');
   });
 
-  it('posts at channel root (undefined threadId) when session.mode === "channel"', async () => {
+  it('posts to the session channel (threadId carries the channelId) in channel mode', async () => {
     const session = createMockSession();
     session.mode = 'channel';
+    session.threadId = 'channel-9';
     session.channelId = 'channel-9';
     await post(session, 'info', 'channel-mode reply');
 
-    // Channel-mode sessions reply at the channel root, so we pass undefined
-    // as the second arg — Mattermost/Slack clients then omit root_id / thread_ts.
+    // Channel-mode sessions pass their channelId as the reply target — the
+    // platform clients recognize channel targets and post root-less in THAT
+    // channel, which is what routes replies correctly under allChannels.
     expect(session.platform.createPost).toHaveBeenCalledWith(
       'channel-mode reply',
-      undefined,
+      'channel-9',
     );
   });
 

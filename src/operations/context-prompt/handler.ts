@@ -204,7 +204,7 @@ export async function postContextPrompt(
     optionsText;
 
   // Channel-mode sessions post at channel root, not as thread replies.
-  const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+  const replyTo = session.threadId;
   const post = await session.platform.createInteractivePost(
     message,
     reactionOptions,

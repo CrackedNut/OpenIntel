@@ -72,20 +72,17 @@ export async function handleMessage(
   // session at the root plus any number of thread-mode sessions inside
   // threads in that channel.
   //
-  // Channel mode is exclusive to the platform's home channel. With
-  // `allChannels`, root posts in OTHER channels reach this handler too —
-  // those always start thread-mode sessions anchored at the mention post,
-  // so replies thread off it in the right channel (a foreign channelId can
-  // never become a session key here).
-  const isHomeChannel = post.channelId === client.getHomeChannelId();
-  const isChannelPost = !post.rootId && isHomeChannel;
-  // `threadRoot` is the routing key for thread-mode lookups. For channel
-  // posts it carries the channelId (used as the second segment of the
-  // composite session key). For direct `createPost(msg, threadRoot)` calls
-  // we use `directReplyTo` instead — `undefined` in channel mode so the
-  // message lands at channel root rather than as a stray thread reply.
+  // With `allChannels` every channel the bot is a member of behaves the
+  // same way: root posts route to THAT channel's shared channel-mode
+  // session (keyed `platformId:channelId`), and `!thread` opts a
+  // conversation out into its own thread.
+  const isChannelPost = !post.rootId;
+  // `threadRoot` is the routing key: the channelId for channel posts (the
+  // second segment of the composite session key), the thread root post id
+  // otherwise. It doubles as the reply target — the platform clients
+  // recognize a channelId target and post at that channel's root.
   const threadRoot = isChannelPost ? post.channelId : (post.rootId || post.id);
-  const directReplyTo = isChannelPost ? undefined : threadRoot;
+  const directReplyTo = threadRoot;
 
   try {
     // Check for !kill command (emergency shutdown)
@@ -166,9 +163,10 @@ export async function handleMessage(
         const ctx: CommandExecutorContext = {
           commandContext: 'in-session',
           threadId: threadRoot,
-          // Safe target for direct createPost calls: undefined at channel
-          // root (threadRoot carries the channelId there, which platforms
-          // reject as a root_id — Mattermost 400 "Invalid RootId").
+          // Reply target for direct createPost calls. At channel root this
+          // carries the channelId — platform clients recognize channel
+          // targets and post root-less in that channel (the old "Invalid
+          // RootId" 400 class is handled at the client now).
           replyTo: directReplyTo,
           triggeringPostId: post.id,
           username,
@@ -334,10 +332,12 @@ export async function handleMessage(
     // ---------------------------------------------------------------------------
     const initialOptions: InitialSessionOptions = {};
     // Foreign channel (allChannels): record where the mention landed so the
-    // MCP permission child posts prompts there. Home-channel sessions omit
-    // it and fall back to the configured channelId, preserving the
-    // back-compat shape of Session/PersistedSession.
-    if (!isHomeChannel) {
+    // MCP permission child posts prompts there. (Channel-mode sessions get
+    // it from `channelMode.channelId`; this covers `!thread` sessions
+    // outside the home channel, where `channelMode` is cleared below.)
+    // Home-channel sessions omit it and fall back to the configured
+    // channelId, preserving the back-compat shape of Session.
+    if (post.channelId !== client.getHomeChannelId()) {
       initialOptions.originChannelId = post.channelId;
     }
     // Channel-mode start: the @mention landed at channel root, so the new
@@ -438,7 +438,7 @@ export async function handleMessage(
             prompt =
               'The user opened a fresh thread session from the channel. Briefly confirm you are ready and ask what they want to work on.';
           }
-          const historyContext = await buildChannelHistoryContext(client, post.id);
+          const historyContext = await buildChannelHistoryContext(client, post.id, post.channelId);
           if (historyContext) prompt = `${historyContext}${prompt}`;
         }
       } else {

@@ -812,7 +812,7 @@ export class SessionManager extends EventEmitter {
         if (session.lifecyclePostId) {
           await session.platform.updatePost(session.lifecyclePostId, pauseMessage);
         } else {
-          const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+          const replyTo = session.threadId;
           const post = await session.platform.createPost(pauseMessage, replyTo);
           session.lifecyclePostId = post.id;
         }
@@ -1521,7 +1521,7 @@ export class SessionManager extends EventEmitter {
           await session.platform.updatePost(session.lifecyclePostId, shutdownMessage);
         } else {
           // Create new shutdown post and store the ID. Channel-mode posts at channel root.
-          const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+          const replyTo = session.threadId;
           const post = await session.platform.createPost(shutdownMessage, replyTo);
           session.lifecyclePostId = post.id;
         }
@@ -1711,7 +1711,7 @@ export class SessionManager extends EventEmitter {
           fmt.formatItalic('Update will proceed automatically after timeout if no response');
 
         // Channel-mode posts at channel root, not as thread replies.
-        const replyTo = session.mode === 'channel' ? undefined : session.threadId;
+        const replyTo = session.threadId;
         const post = await session.platform.createInteractivePost(
           message,
           ['👍', '👎'],

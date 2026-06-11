@@ -128,10 +128,12 @@ platforms:
     allowedUsers: [alice, bob]
     skipPermissions: false
     # Optional: answer @mentions in EVERY channel the bot is a member of
-    # (including group/DM channels). Foreign channels always run thread-mode
-    # sessions anchored at the mention; channel mode, the sticky message and
-    # missed-message recovery stay exclusive to the home channelId above.
-    # allowedUsers gating applies everywhere. Mattermost only.
+    # (including group/DM channels). Every channel then behaves like the
+    # home channel — root mentions start that channel's shared channel-mode
+    # session, replies land at the channel root, and !thread opts out into
+    # a thread. Sticky message + missed-message recovery stay exclusive to
+    # the home channelId. allowedUsers gating applies everywhere.
+    # Mattermost only.
     # allChannels: true
 
   # Slack configuration
