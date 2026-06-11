@@ -8,9 +8,9 @@
  */
 
 import { runOnboarding } from '../src/onboarding.js';
-import { checkConfigExists } from '../src/config/index.js';
+import { configExists } from '../src/config/index.js';
 
-const reconfigure = process.argv.includes('--reconfigure') || checkConfigExists();
+const reconfigure = process.argv.includes('--reconfigure') || configExists();
 await runOnboarding(reconfigure);
 console.log('');
 console.log('✓ Configuration saved.');
