@@ -1,25 +1,19 @@
 # OpenIntel
 
 ```
- ✴ ▄█▀ ███ ✴   OpenIntel
-✴  █▀   █   ✴  autonomous Claude Code agents in your chat,
- ✴ ▀█▄  █  ✴   with a dashboard to run the whole operation
+ ✴ ▄▀▄ ▀█▀ ✴   OpenIntel
+✴  █ █  █  ✴  autonomous Claude Code agents in your chat,
+ ✴ ▀▄▀ ▄█▄ ✴   with a dashboard to run the whole operation
 ```
 
-**OpenIntel turns Claude Code into a team of chat-native agents.** Run the bot on any machine, point it at a Mattermost or Slack channel, and the whole team can talk to an autonomous coding agent — watch it work in real time, approve its actions with emoji, spin up parallel sessions in threads, and manage everything (persona, skills, projects, config, logs) from a local web dashboard.
+**OpenIntel turns Claude Code into a team of chat-native agents.** Run the bot on any machine, point it at a Mattermost, Slack, or Discord channel, and the whole team can talk to an autonomous coding agent — watch it work in real time, approve its actions with emoji, spin up parallel sessions in threads, and manage everything (persona, skills, projects, config, logs) from a local web dashboard.
 
 Built on a fork of [anneschuth/claude-threads](https://github.com/anneschuth/claude-threads) (Apache-2.0), extended into a self-contained agent platform.
 
 ## Install (one-liner)
 
-OpenIntel is a private repo, so installs need a GitHub token with read access
-(create a fine-grained PAT at github.com/settings/personal-access-tokens with
-Contents: read on this repo):
-
 ```bash
-export GITHUB_TOKEN=github_pat_xxx
-curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
 ```
 
 On a fresh machine this installs bun + the Claude Code CLI if missing, clones and builds OpenIntel, runs an interactive wizard for your bot token/channel, seeds an editable agent persona, starts the daemon, and prints the dashboard URL. Each device gets its own agent for its own project.
@@ -69,13 +63,14 @@ The bot 👀-reacts when it accepts your message and flips it to ✅ when the tu
 ### Core features
 
 - **Real-time streaming** of Claude's responses, tool use, diffs, and task lists into chat
-- **Multi-platform** — multiple Mattermost and Slack workspaces simultaneously
+- **Multi-platform** — Mattermost, Slack, and Discord, multiple workspaces/servers simultaneously
+- **Per-session model picker** — `!model` lists models to react-pick for this session only; `!model --default` also sets the default for new sessions
 - **Concurrent sessions** — channel-mode + any number of thread sessions, persisted across restarts
 - **Permission modes** — `default` (every action prompts 👍/✅/👎), `auto` (classifier auto-approves low-risk), `bypass`; switch in-session with `!permissions <mode>`
 - **Collaboration** — `!invite @user` / `!kick @user`; collaborators land as `Co-Authored-By:` trailers on commits
 - **Git worktrees** — `!worktree feature/foo` isolates the agent's changes (also `list`, `switch`, `remove`, `cleanup`, `off`)
 - **Files both ways** — drop any file into chat (100 MB cap) for Claude to read; Claude posts screenshots/PDFs/plots back via `send_file`
-- **Permalink reading** — paste a Mattermost/Slack permalink and Claude resolves it via `read_post`
+- **Permalink reading** — paste a Mattermost/Slack/Discord permalink and Claude resolves it via `read_post`
 - **Multi-account Claude (opt-in)** — round-robin sessions across subscriptions/API keys with rate-limit cooldown
 
 ## Session Commands
@@ -89,6 +84,7 @@ Type `!help` in any session:
 | `!context` / `!cost` / `!compact`           | Context usage / token cost / compress context                                            |
 | `!cd <path>`                                | Change working directory (restarts Claude)                                               |
 | `!permissions <mode>`                       | Set permission mode: `default` / `auto` / `bypass`                                       |
+| `!model [--default]`                        | React-pick a model for this session (`--default` also saves it as the default)           |
 | `!worktree <branch>`                        | Git worktree management (also: `list`, `switch`, `remove`, `cleanup`, `off`)             |
 | `!plugin <list\|install\|uninstall> [name]` | Manage Claude Code plugins (restarts Claude)                                             |
 | `!invite @user` / `!kick @user`             | Session collaboration                                                                    |
@@ -125,6 +121,7 @@ Legacy locations (`~/.hermes/*`, `~/agent-memory/projects`, `~/.claude/skills`) 
 
 - **Bun 1.2.21+** (the installer handles this) — or Node 20+
 - **Claude Code CLI** logged in — test with `claude --version` (the installer installs it; run `claude` once to authenticate)
+- **A bot on your platform** — see [SETUP_GUIDE.md](SETUP_GUIDE.md). For **Discord**, the bot must have the **MESSAGE CONTENT** privileged intent enabled (Developer Portal → Bot → Privileged Gateway Intents) or it can't read messages.
 
 ## Architecture (short version)
 

@@ -2,9 +2,10 @@
 # OpenIntel one-liner installer — get a chat-driven Claude Code agent
 # running on a fresh machine:
 #
-#   export GITHUB_TOKEN=github_pat_xxx   # repo is private — token needs Contents:read
-#   curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-#     https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/CrackedNut/OpenIntel/main/install.sh | bash
+#
+# (The repo is public; no token needed. If it's ever private again, set
+#  GITHUB_TOKEN to a fine-grained PAT with Contents:read.)
 #
 # What it does:
 #   1. Installs bun if missing (git must already exist)
@@ -18,7 +19,7 @@
 #   CLAUDE_THREADS_REPO_SLUG  github slug          (default: CrackedNut/OpenIntel)
 #   CLAUDE_THREADS_REF        branch/tag to run    (default: main)
 #   CLAUDE_THREADS_REPO       checkout path        (default: ~/code/claude-threads-agent)
-#   GITHUB_TOKEN              REQUIRED (private repo): used for clone + raw fetch
+#   GITHUB_TOKEN              optional: used for clone if the repo is private
 #   CLAUDE_THREADS_NO_START   set 1 to skip starting the daemon
 
 set -euo pipefail
@@ -55,11 +56,11 @@ if ! command -v claude >/dev/null 2>&1; then
 fi
 
 # --- clone / update ----------------------------------------------------------
+# Public repo: a plain HTTPS clone works. A GITHUB_TOKEN is only needed if the
+# repo is private again — use it for auth when present.
 CLONE_URL="https://github.com/$SLUG.git"
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   CLONE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/$SLUG.git"
-elif [[ ! -d "$DEST/.git" ]]; then
-  die "OpenIntel is a private repo — set GITHUB_TOKEN (fine-grained PAT with Contents:read) and re-run"
 fi
 
 if [[ -d "$DEST/.git" ]]; then

@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.8] - 2026-06-11
+
+### Changed
+- **Docs/installer for the public repo.** README refreshed: new "OI" wordmark (was the old "CT"), Discord listed everywhere alongside Mattermost/Slack, `!model` documented, and a Discord MESSAGE CONTENT intent note. The install one-liner and `install.sh` no longer require `GITHUB_TOKEN` (the repo is public again; the token is now optional, used only if it's ever private).
+
 ## [2.1.7] - 2026-06-11
 
 ### Fixed
