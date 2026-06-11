@@ -1001,6 +1001,10 @@ export async function startSession(
     // on its permission prompts. Otherwise it inherits PLATFORM_THREAD_ID
     // (the channelId) and Mattermost rejects every prompt with 400.
     mode: channelMode ? 'channel' : 'thread',
+    // Session's actual channel — for allChannels thread sessions outside
+    // the home channel the MCP child must post prompts there, not to the
+    // platform-configured channelId.
+    channelId: channelMode?.channelId ?? initialOptions?.originChannelId,
     permissionMode,
     sessionId: claudeSessionId,
     resume: false,
@@ -1031,7 +1035,7 @@ export async function startSession(
     // channel. Thread-mode sessions leave these undefined to preserve the
     // back-compat shape of `Session` and `PersistedSession`.
     mode: channelMode ? 'channel' : undefined,
-    channelId: channelMode?.channelId,
+    channelId: channelMode?.channelId ?? initialOptions?.originChannelId,
     // `!thread <topic>` names the session up front; the auto-title metadata
     // pass skips sessions that already have a title.
     sessionTitle: initialOptions?.threadTopic?.substring(0, 80) || undefined,
@@ -1295,6 +1299,9 @@ export async function resumeSession(
     // root after restart. Without this a paused channel session, when
     // resumed, would start hitting the 400 again on every tool use.
     mode: state.mode === 'channel' ? 'channel' : 'thread',
+    // Restore the session's actual channel (allChannels thread sessions
+    // live outside the home channel; MCP prompts must follow them there).
+    channelId: state.channelId,
     permissionMode: resumePermissionMode,
     sessionId: state.claudeSessionId,
     resume: true,

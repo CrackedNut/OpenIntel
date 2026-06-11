@@ -372,3 +372,93 @@ describe('MattermostClient HTTP methods', () => {
     expect(attempts).toBe(3);
   }, 10_000);
 });
+
+// -----------------------------------------------------------------------------
+// allChannels mode
+// -----------------------------------------------------------------------------
+
+/** Feed a raw 'posted' websocket event into the (private) intake handler. */
+function injectPostedEvent(
+  client: MattermostClient,
+  post: { id: string; channel_id: string; user_id: string; message: string; root_id?: string },
+): void {
+  (client as unknown as { handleEvent(e: unknown): void }).handleEvent({
+    event: 'posted',
+    data: { post: JSON.stringify({ create_at: 1000, root_id: '', ...post }) },
+  });
+}
+
+describe('MattermostClient allChannels', () => {
+  it('default mode drops posts from foreign channels at intake', async () => {
+    const c = makeClient(); // allChannels unset
+    const seen: string[] = [];
+    c.on('message', (p) => seen.push(p.id));
+    injectPostedEvent(c, { id: 'p-f', channel_id: 'c-other', user_id: 'u1', message: 'yo' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toHaveLength(0);
+  });
+
+  it('allChannels accepts posts from foreign channels at intake', async () => {
+    fetchResponder = () =>
+      jsonResponse({ id: 'u1', username: 'alice' }); // getUser lookup
+    const c = makeClient({ allChannels: true });
+    const seen: string[] = [];
+    c.on('message', (p) => seen.push(p.id));
+    injectPostedEvent(c, { id: 'p-f', channel_id: 'c-other', user_id: 'u1', message: 'yo' });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(seen).toEqual(['p-f']);
+  });
+
+  it('createPost routes replies to the channel learned at intake', async () => {
+    fetchResponder = (url) => {
+      if (url.includes('/users/')) return jsonResponse({ id: 'u1', username: 'alice' });
+      return jsonResponse({
+        id: 'p-reply', channel_id: 'c-other', user_id: 'bot', message: 'hi', root_id: 'p-f', create_at: 2,
+      });
+    };
+    const c = makeClient({ allChannels: true });
+    // Root post in a foreign channel arrives → indexed.
+    injectPostedEvent(c, { id: 'p-f', channel_id: 'c-other', user_id: 'u1', message: '@claude hi' });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await c.createPost('reply', 'p-f');
+    const postCall = fetchCalls.find((f) => f.url.endsWith('/posts') && f.method === 'POST');
+    expect(postCall).toBeDefined();
+    expect((postCall!.body as Record<string, unknown>).channel_id).toBe('c-other');
+    expect((postCall!.body as Record<string, unknown>).root_id).toBe('p-f');
+  });
+
+  it('createPost falls back to a post lookup for roots never seen at intake', async () => {
+    fetchResponder = (url) => {
+      if (url.includes('/posts/p-unseen') ) {
+        return jsonResponse({
+          id: 'p-unseen', channel_id: 'c-resumed', user_id: 'u1', message: 'x', root_id: '', create_at: 1,
+        });
+      }
+      return jsonResponse({
+        id: 'p-r', channel_id: 'c-resumed', user_id: 'bot', message: 'hi', root_id: 'p-unseen', create_at: 2,
+      });
+    };
+    const c = makeClient({ allChannels: true });
+    await c.createPost('reply after restart', 'p-unseen');
+    const postCall = fetchCalls.find((f) => f.url.endsWith('/posts') && f.method === 'POST');
+    expect((postCall!.body as Record<string, unknown>).channel_id).toBe('c-resumed');
+  });
+
+  it('createPost without allChannels keeps the home channel (no lookup)', async () => {
+    fetchResponder = () =>
+      jsonResponse({ id: 'p', channel_id: 'c-123', user_id: 'bot', message: 'hi', root_id: 't', create_at: 1 });
+    await makeClient().createPost('reply', 'thread-unknown');
+    expect(fetchCalls).toHaveLength(1); // no GET /posts lookup
+    expect((fetchCalls[0].body as Record<string, unknown>).channel_id).toBe('c-123');
+  });
+
+  it('home-channel posts still set the recovery baseline; foreign posts do not', async () => {
+    fetchResponder = () => jsonResponse({ id: 'u1', username: 'alice' });
+    const c = makeClient({ allChannels: true });
+    injectPostedEvent(c, { id: 'p-foreign', channel_id: 'c-other', user_id: 'u1', message: 'a' });
+    expect((c as unknown as { lastProcessedPostId: string | null }).lastProcessedPostId).toBeNull();
+    injectPostedEvent(c, { id: 'p-home', channel_id: 'c-123', user_id: 'u1', message: 'b' });
+    expect((c as unknown as { lastProcessedPostId: string | null }).lastProcessedPostId).toBe('p-home');
+  });
+});

@@ -39,6 +39,8 @@ export function buildRestartCliOptions(
     // worktree switch) — otherwise a respawned MCP child would default to
     // thread mode and the 400-on-prompt bug returns.
     mode: session.mode === 'channel' ? 'channel' : 'thread',
+    // Keep MCP prompts in the session's actual channel (allChannels).
+    channelId: session.channelId,
     chrome: ctx.chromeEnabled,
     platformConfig: platformMcpConfig,
     logSessionId: session.sessionId,

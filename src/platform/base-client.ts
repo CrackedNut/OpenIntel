@@ -109,6 +109,9 @@ export abstract class BasePlatformClient extends EventEmitter implements Platfor
    */
   abstract getUserByUsername(username: string): Promise<PlatformUser | null>;
 
+  /** The configured home channel id (see PlatformClient.getHomeChannelId). */
+  abstract getHomeChannelId(): string;
+
   /**
    * Create a new post/message.
    */

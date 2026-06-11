@@ -56,6 +56,13 @@ export interface InitialSessionOptions {
     channelId: string;
   };
   /**
+   * Channel the triggering post landed in. Set by the message handler.
+   * Load-bearing for thread-mode sessions outside the platform's home
+   * channel (`allChannels`): the MCP permission child must post its
+   * prompts to this channel, not the configured one.
+   */
+  originChannelId?: string;
+  /**
    * Opt-out of channel-mode for a specific @mention. Set by `!thread` in
    * the first message: even though the @mention landed at channel root
    * (where the message-handler would normally route into a shared

@@ -71,7 +71,14 @@ export async function handleMessage(
   // Both modes can coexist in the same channel: a shared channel-mode
   // session at the root plus any number of thread-mode sessions inside
   // threads in that channel.
-  const isChannelPost = !post.rootId;
+  //
+  // Channel mode is exclusive to the platform's home channel. With
+  // `allChannels`, root posts in OTHER channels reach this handler too —
+  // those always start thread-mode sessions anchored at the mention post,
+  // so replies thread off it in the right channel (a foreign channelId can
+  // never become a session key here).
+  const isHomeChannel = post.channelId === client.getHomeChannelId();
+  const isChannelPost = !post.rootId && isHomeChannel;
   // `threadRoot` is the routing key for thread-mode lookups. For channel
   // posts it carries the channelId (used as the second segment of the
   // composite session key). For direct `createPost(msg, threadRoot)` calls
@@ -326,6 +333,13 @@ export async function handleMessage(
     // Uses unified command executor with stacking support
     // ---------------------------------------------------------------------------
     const initialOptions: InitialSessionOptions = {};
+    // Foreign channel (allChannels): record where the mention landed so the
+    // MCP permission child posts prompts there. Home-channel sessions omit
+    // it and fall back to the configured channelId, preserving the
+    // back-compat shape of Session/PersistedSession.
+    if (!isHomeChannel) {
+      initialOptions.originChannelId = post.channelId;
+    }
     // Channel-mode start: the @mention landed at channel root, so the new
     // session is shared across the whole channel.
     if (isChannelPost) {

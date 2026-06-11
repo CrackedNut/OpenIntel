@@ -115,6 +115,13 @@ export interface ClaudeCliOptions {
    */
   mode?: 'channel' | 'thread';
   /**
+   * Channel the session lives in. Forwarded to the MCP child as
+   * PLATFORM_CHANNEL_ID so permission prompts post to the session's actual
+   * channel — load-bearing for `allChannels` sessions outside the home
+   * channel. Falls back to `platformConfig.channelId` when omitted.
+   */
+  channelId?: string;
+  /**
    * How tool-use permissions are enforced.
    *
    * - `'default'`: MCP permission server posts prompts; user reacts to approve.
@@ -272,6 +279,12 @@ export function buildPermissionArgs(opts: {
    * `threadId` is actually the channelId and Mattermost would reject it).
    */
   mode?: 'channel' | 'thread';
+  /**
+   * Session's actual channel. Forwarded as PLATFORM_CHANNEL_ID so MCP
+   * prompts post to the right channel for allChannels sessions; falls back
+   * to `platformConfig.channelId` when omitted.
+   */
+  channelId?: string;
   sessionId: string | undefined;
   permissionTimeoutMs: number;
   debug: boolean;
@@ -315,7 +328,7 @@ export function buildPermissionArgs(opts: {
     PLATFORM_ID: opts.platformConfig.id || '',
     PLATFORM_URL: opts.platformConfig.url,
     PLATFORM_TOKEN: opts.platformConfig.token,
-    PLATFORM_CHANNEL_ID: opts.platformConfig.channelId,
+    PLATFORM_CHANNEL_ID: opts.channelId || opts.platformConfig.channelId,
     PLATFORM_THREAD_ID: opts.threadId || '',
     PLATFORM_MODE: opts.mode === 'channel' ? 'channel' : '',
     ALLOWED_USERS: opts.platformConfig.allowedUsers.join(','),
@@ -537,6 +550,7 @@ export class ClaudeCli extends EventEmitter {
       platformConfig: this.options.platformConfig,
       threadId: this.options.threadId,
       mode: this.options.mode,
+      channelId: this.options.channelId,
       sessionId: this.options.sessionId,
       permissionTimeoutMs: this.options.permissionTimeoutMs ?? 120000,
       debug: this.debug,

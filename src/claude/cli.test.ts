@@ -433,6 +433,25 @@ describe('buildPermissionArgs', () => {
     expect(tempFile).toBeNull();
   });
 
+  it('PLATFORM_CHANNEL_ID follows the session channel override, falling back to the platform channel', () => {
+    const envOf = (args: string[]) => {
+      const blob = args[args.indexOf('--mcp-config') + 1];
+      return JSON.parse(blob).mcpServers['claude-threads-mcp'].env as Record<string, string>;
+    };
+
+    // No override → platform-configured channel (pre-allChannels behavior).
+    const { args: defaults } = buildPermissionArgs({ ...baseOpts, permissionMode: 'default' });
+    expect(envOf(defaults).PLATFORM_CHANNEL_ID).toBe('c-1');
+
+    // allChannels session outside the home channel → its own channel wins.
+    const { args: overridden } = buildPermissionArgs({
+      ...baseOpts,
+      channelId: 'c-foreign',
+      permissionMode: 'default',
+    });
+    expect(envOf(overridden).PLATFORM_CHANNEL_ID).toBe('c-foreign');
+  });
+
   it("default: emits --mcp-config + --permission-prompt-tool, no --permission-mode", () => {
     const { args } = buildPermissionArgs({ ...baseOpts, permissionMode: 'default' });
     expect(args).toContain('--mcp-config');

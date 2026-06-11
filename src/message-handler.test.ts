@@ -32,6 +32,7 @@ function createMockPlatform(botName = 'claude-bot') {
     extractPrompt: mock((message: string) => message.replace(new RegExp(`@${botName}\\s*`, 'gi'), '').trim()),
     isUserAllowed: mock((username: string) => username === 'allowed-user' || username === 'admin'),
     getBotName: mock(() => botName),
+    getHomeChannelId: mock(() => 'channel1'),
     getFormatter: () => createMockFormatter(),
     disconnect: mock(() => {}),
     posts,
@@ -1750,6 +1751,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'alice', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.findChannelSession).toHaveBeenCalledWith('test-platform', 'c-1');
@@ -1772,6 +1775,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'alice', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       // Thread routing kicks in because rootId is set.
@@ -1798,6 +1803,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.startSession).toHaveBeenCalled();
@@ -1825,6 +1832,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.startSession).toHaveBeenCalled();
@@ -1852,6 +1861,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.startSession).toHaveBeenCalled();
@@ -1885,6 +1896,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       // Hint was posted into the thread (replyTo === thread root, not undefined).
@@ -1916,6 +1929,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.startSession).toHaveBeenCalled();
@@ -1948,6 +1963,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(addReaction).toHaveBeenCalledWith('p-msg', 'eyes');
@@ -1974,6 +1991,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       const calls = (client.createPost as any).mock.calls;
@@ -1998,6 +2017,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       // A 🧵 anchor post was created at channel root (undefined target).
@@ -2035,6 +2056,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       const anchorCall = (client.createPost as any).mock.calls.find(
@@ -2069,6 +2092,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.startSession).toHaveBeenCalled();
@@ -2102,6 +2127,8 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       expect(session.startSession).toHaveBeenCalled();
@@ -2132,12 +2159,86 @@ describe('handleMessage', () => {
       };
       const user: PlatformUser = { id: 'u-9', username: 'bob', displayName: 'Bob' };
 
+      // These tests predate getHomeChannelId: the post's channel IS the home channel.
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
       await handleMessage(client, session, post, user, options);
 
       const createPostCalls = (client.createPost as any).mock.calls;
       const errorCall = createPostCalls.find(([msg]: [string]) => msg.includes('Mention me'));
       expect(errorCall).toBeDefined();
       expect(errorCall[1]).toBeUndefined();
+    });
+  });
+
+  // allChannels: posts arriving from channels OTHER than the home channel.
+  // Channel mode is exclusive to the home channel — foreign root mentions
+  // must start THREAD sessions anchored at the mention post, so replies
+  // thread off it in the right channel.
+  describe('allChannels (foreign channels)', () => {
+    test('root mention in a foreign channel starts a thread session anchored at the mention', async () => {
+      const post: PlatformPost = {
+        id: 'p-foreign-1',
+        platformId: 'test',
+        channelId: 'c-foreign',
+        userId: 'user1',
+        message: '@claude-bot help me out',
+        rootId: '',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'user1', username: 'allowed-user', displayName: 'User' };
+
+      await handleMessage(client, session, post, user, options); // home stays 'channel1'
+
+      // Never treated as channel mode...
+      expect(session.findChannelSession).not.toHaveBeenCalled();
+      // ...and the session anchors at the mention post with the origin
+      // channel recorded for the MCP child.
+      expect(session.startSession).toHaveBeenCalledWith(
+        { prompt: 'help me out', files: undefined },
+        'allowed-user',
+        'p-foreign-1',
+        'test-platform',
+        'User',
+        'p-foreign-1',
+        { originChannelId: 'c-foreign' }
+      );
+    });
+
+    test('root post without a mention in a foreign channel is ignored', async () => {
+      const post: PlatformPost = {
+        id: 'p-foreign-2',
+        platformId: 'test',
+        channelId: 'c-foreign',
+        userId: 'user1',
+        message: 'just chatting here',
+        rootId: '',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'user1', username: 'allowed-user', displayName: 'User' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).not.toHaveBeenCalled();
+      expect(client.createPost).not.toHaveBeenCalled();
+    });
+
+    test('foreign-channel mention from an unauthorized user is rejected', async () => {
+      const post: PlatformPost = {
+        id: 'p-foreign-3',
+        platformId: 'test',
+        channelId: 'c-foreign',
+        userId: 'user1',
+        message: '@claude-bot do something',
+        rootId: '',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'user1', username: 'outsider', displayName: 'Outsider' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.startSession).not.toHaveBeenCalled();
+      const calls = (client.createPost as any).mock.calls;
+      expect(calls.some(([msg]: [string]) => msg.includes('not authorized'))).toBe(true);
     });
   });
 });

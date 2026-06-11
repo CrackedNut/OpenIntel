@@ -759,6 +759,11 @@ export class SlackClient extends BasePlatformClient {
     }
   }
 
+  /** The configured home channel id. Slack has no allChannels mode yet. */
+  getHomeChannelId(): string {
+    return this.channelId;
+  }
+
   /**
    * Get MCP config for permission server.
    */

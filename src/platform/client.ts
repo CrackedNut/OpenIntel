@@ -111,6 +111,13 @@ export interface PlatformClient extends EventEmitter {
   getBotName(): string;
 
   /**
+   * The configured home channel id. Channel-mode sessions are exclusive to
+   * this channel; with `allChannels` (Mattermost) every other channel the
+   * bot is a member of runs thread-mode sessions.
+   */
+  getHomeChannelId(): string;
+
+  /**
    * Get platform config for MCP permission server
    */
   getMcpConfig(): {

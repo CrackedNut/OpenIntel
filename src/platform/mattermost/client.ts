@@ -39,14 +39,26 @@ export class MattermostClient extends BasePlatformClient {
   private url: string;
   private token: string;
   private channelId: string;
+  private allChannels: boolean;
   private outboundFiles?: { enabled?: boolean; maxBytes?: number };
   private userCache: Map<string, MattermostUser> = new Map();
   private botUserId: string | null = null;
   private botUsername: string | null = null;
   private readonly formatter = new MattermostFormatter();
 
-  // Track last processed post for message recovery after disconnection
+  // Track last processed post for message recovery after disconnection.
+  // Recovery only covers the home channel, so only home-channel posts may
+  // become the baseline (a foreign post id would corrupt the `after=` query).
   private lastProcessedPostId: string | null = null;
+
+  /**
+   * threadRoot → channelId routing index for `allChannels` mode. Learned at
+   * intake (root posts map their own id; replies map their root_id) and on
+   * demand via `GET /posts/{id}` for roots we never saw (e.g. resumed
+   * sessions after a restart). Bounded FIFO — see THREAD_CHANNEL_INDEX_MAX.
+   */
+  private threadChannelIndex: Map<string, string> = new Map();
+  private static readonly THREAD_CHANNEL_INDEX_MAX = 2000;
 
   constructor(platformConfig: MattermostPlatformConfig) {
     super();
@@ -55,9 +67,58 @@ export class MattermostClient extends BasePlatformClient {
     this.url = platformConfig.url;
     this.token = platformConfig.token;
     this.channelId = platformConfig.channelId;
+    this.allChannels = platformConfig.allChannels === true;
     this.botName = platformConfig.botName;
     this.allowedUsers = platformConfig.allowedUsers;
     this.outboundFiles = platformConfig.outboundFiles;
+  }
+
+  /**
+   * The configured home channel. Channel-mode sessions, the sticky message,
+   * and missed-message recovery are exclusive to this channel; with
+   * `allChannels` every other channel runs thread-mode sessions.
+   */
+  getHomeChannelId(): string {
+    return this.channelId;
+  }
+
+  /** Record a threadRoot → channel mapping (bounded FIFO eviction). */
+  private indexThreadChannel(threadRoot: string, channelId: string): void {
+    if (this.threadChannelIndex.size >= MattermostClient.THREAD_CHANNEL_INDEX_MAX
+        && !this.threadChannelIndex.has(threadRoot)) {
+      const oldest = this.threadChannelIndex.keys().next().value;
+      if (oldest !== undefined) this.threadChannelIndex.delete(oldest);
+    }
+    this.threadChannelIndex.set(threadRoot, channelId);
+  }
+
+  /**
+   * Resolve which channel a reply target lives in. Synchronous index-only
+   * variant for hot paths that can't await (e.g. typing indicator).
+   */
+  private resolveChannelSync(threadId?: string): string {
+    if (!threadId || threadId === this.channelId) return this.channelId;
+    return this.threadChannelIndex.get(threadId) ?? this.channelId;
+  }
+
+  /**
+   * Resolve which channel a reply target lives in, falling back to a post
+   * lookup for roots we never saw arrive (restart, recovery). Unknown or
+   * unfetchable targets resolve to the home channel — exactly the pre-
+   * allChannels behavior.
+   */
+  private async resolveChannel(threadId?: string): Promise<string> {
+    if (!threadId || threadId === this.channelId) return this.channelId;
+    const indexed = this.threadChannelIndex.get(threadId);
+    if (indexed) return indexed;
+    if (!this.allChannels) return this.channelId;
+    try {
+      const post = await this.api<MattermostPost>('GET', `/posts/${threadId}`);
+      this.indexThreadChannel(threadId, post.channel_id);
+      return post.channel_id;
+    } catch {
+      return this.channelId;
+    }
   }
 
   // ============================================================================
@@ -273,7 +334,9 @@ export class MattermostClient extends BasePlatformClient {
     threadId?: string
   ): Promise<PlatformPost> {
     const request: CreatePostRequest = {
-      channel_id: this.channelId,
+      // Mattermost rejects posts whose channel_id doesn't match the root
+      // post's channel, so the reply target decides the channel.
+      channel_id: await this.resolveChannel(threadId),
       message,
       // Only include root_id if it's a non-empty string (Mattermost rejects empty string)
       root_id: threadId || undefined,
@@ -344,7 +407,7 @@ export class MattermostClient extends BasePlatformClient {
     const result = await uploadFileMattermost({
       url: this.url,
       token: this.token,
-      channelId: this.channelId,
+      channelId: await this.resolveChannel(threadId),
       threadId,
       filePath,
       filename,
@@ -620,11 +683,21 @@ export class MattermostClient extends BasePlatformClient {
         // Ignore messages from ourselves
         if (post.user_id === this.botUserId) return;
 
-        // Only handle messages in our channel
-        if (post.channel_id !== this.channelId) return;
+        // Only handle messages in our channel — unless allChannels, where
+        // every channel the bot is a member of is fair game (the message
+        // handler routes foreign channels to thread-mode sessions).
+        if (!this.allChannels && post.channel_id !== this.channelId) return;
 
-        // Track last processed post for message recovery after disconnection
-        this.lastProcessedPostId = post.id;
+        // Learn threadRoot → channel so replies/typing/uploads route to the
+        // right channel: root posts map their own id, replies their root.
+        this.indexThreadChannel(post.root_id || post.id, post.channel_id);
+
+        // Track last processed post for message recovery after disconnection.
+        // Home channel only — recovery queries the home channel and a
+        // foreign baseline would corrupt its `after=` cursor.
+        if (post.channel_id === this.channelId) {
+          this.lastProcessedPostId = post.id;
+        }
 
         // Process the post (potentially enriching with file metadata)
         this.processAndEmitPost(post);
@@ -814,7 +887,10 @@ export class MattermostClient extends BasePlatformClient {
       action: 'user_typing',
       seq: Date.now(),
       data: {
-        channel_id: this.channelId,
+        // Sync resolution only (no await in the WS hot path): the index is
+        // warm whenever typing fires, because the user message that
+        // triggered it was just indexed at intake.
+        channel_id: this.resolveChannelSync(parentId),
         parent_id: parentId || '',
       },
     }));
