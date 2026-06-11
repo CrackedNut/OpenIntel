@@ -108,9 +108,21 @@ case "${SHELL:-}" in
   *)      add_path_line "$HOME/.profile" ;;
 esac
 
+# A piped installer can't change the PARENT shell's PATH, so also symlink
+# into directories that are typically on PATH already (Homebrew bin) — that
+# makes `openintel` work immediately in the same terminal on most machines.
+for d in /opt/homebrew/bin /usr/local/bin; do
+  if [[ -d "$d" && -w "$d" && ":$PATH:" == *":$d:"* ]]; then
+    ln -sf "$BIN_DIR/claude-threads" "$d/openintel"
+    ln -sf "$BIN_DIR/claude-threads" "$d/claude-threads"
+    ok "linked into $d (works in this terminal right away)"
+    break
+  fi
+done
+
 # Warn if a different claude-threads still shadows ours in the CURRENT shell.
 existing="$(command -v claude-threads 2>/dev/null || true)"
-if [[ -n "$existing" && "$existing" != "$BIN_DIR/claude-threads" ]]; then
+if [[ -n "$existing" && "$existing" != "$BIN_DIR/claude-threads" && ! -L "$existing" ]]; then
   log "NOTE: '$existing' currently shadows this install — open a new terminal, or remove the npm/bun global package (bun remove -g claude-threads)"
 fi
 
@@ -175,8 +187,16 @@ elif [[ -f "$CONFIG" ]]; then
   ok "bot is running"
   echo ""
   echo "  🖥  Agent dashboard:  http://127.0.0.1:7777"
-  echo "  📦  Manage the bot:   claude-threads status|install|setup|restart|panel|rollback"
+  echo "  📦  Manage the bot:   openintel status|install|setup|restart|panel|logs|rollback"
   echo "  💬  In your channel:  @<botname> hello"
+  if ! command -v openintel >/dev/null 2>&1; then
+    echo ""
+    echo "  ⚠️  ONE MORE STEP — your current terminal doesn't see the new command yet:"
+    echo ""
+    echo "      exec zsh"
+    echo ""
+    echo "      (or just open a new terminal)"
+  fi
 else
   log "no config — run \`claude-threads setup\` then \`claude-threads install\`"
 fi
