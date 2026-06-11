@@ -47,6 +47,27 @@ function fakeMessage(opts: {
   };
 }
 
+describe('DiscordClient login error guidance', () => {
+  const explain = (c: DiscordClient, e: unknown) =>
+    (c as unknown as { explainLoginError: (e: unknown) => Error }).explainLoginError(e);
+
+  it('rewrites "disallowed intents" into the MESSAGE CONTENT toggle steps', () => {
+    const out = explain(makeClient(), new Error('Used disallowed intents'));
+    expect(out.message).toContain('MESSAGE CONTENT');
+    expect(out.message).toContain('Privileged Gateway Intents');
+  });
+
+  it('rewrites an invalid-token error into a reset hint', () => {
+    const out = explain(makeClient(), new Error('An invalid token was provided'));
+    expect(out.message).toContain('Reset it');
+  });
+
+  it('passes other errors through unchanged', () => {
+    const out = explain(makeClient(), new Error('network unreachable'));
+    expect(out.message).toBe('network unreachable');
+  });
+});
+
 describe('DiscordClient identity & config', () => {
   it('reports the home channel and discord mcp config', () => {
     const c = makeClient();

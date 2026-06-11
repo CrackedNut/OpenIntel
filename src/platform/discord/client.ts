@@ -122,8 +122,27 @@ export class DiscordClient extends BasePlatformClient {
         this.emit('connected');
         resolve();
       });
-      client.login(this.token).catch(reject);
+      client.login(this.token).catch((err) => reject(this.explainLoginError(err)));
     });
+  }
+
+  /**
+   * Turn discord.js's terse login failures into actionable guidance — the
+   * "disallowed intents" one in particular trips up every first-time setup.
+   */
+  private explainLoginError(err: unknown): Error {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/disallowed intents/i.test(msg)) {
+      return new Error(
+        'Discord rejected the connection: the MESSAGE CONTENT intent is not enabled. ' +
+          'Enable it at https://discord.com/developers/applications → your app → Bot → ' +
+          'Privileged Gateway Intents → toggle "MESSAGE CONTENT INTENT" on, Save, then restart.',
+      );
+    }
+    if (/token/i.test(msg) && /invalid/i.test(msg)) {
+      return new Error('Discord rejected the bot token (invalid). Reset it in the Developer Portal → Bot → Reset Token.');
+    }
+    return err instanceof Error ? err : new Error(msg);
   }
 
   protected forceCloseConnection(): Promise<void> {

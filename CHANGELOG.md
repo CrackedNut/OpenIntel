@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.6] - 2026-06-11
+
+### Changed
+- **Clearer Discord connection errors.** discord.js's terse "Used disallowed intents" login failure (the #1 first-time-setup snag) is now rewritten into actionable guidance pointing at the MESSAGE CONTENT intent toggle in the Developer Portal; an invalid-token failure points at Reset Token. No behavior change — just a friendlier error.
+
 ## [2.1.5] - 2026-06-11
 
 ### Added
