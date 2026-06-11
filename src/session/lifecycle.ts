@@ -1902,9 +1902,15 @@ export async function killSession(
   // Clean up session from maps and notify keep-alive
   removeFromRegistry(session, ctx);
 
-  // Explicitly unpersist if requested
+  // Explicitly unpersist if requested. HARD-remove (not soft-delete): a
+  // !stop / !kill is the user saying "I'm done with this" — a soft-deleted
+  // record would be found by the paused-session lookup and RESUMED on the
+  // next message (since the channel black-hole fix made resume honor
+  // soft-deleted records), resurrecting the conversation the user just
+  // ended. Hard removal makes the next mention start a fresh session.
+  // Crash/timeout paths still soft-delete (they stay resumable on purpose).
   if (unpersist) {
-    ctx.ops.unpersistSession(session.sessionId);
+    ctx.state.sessionStore.remove(session.sessionId);
   }
 
   sessionLog(session).info(`✖ Session killed`);

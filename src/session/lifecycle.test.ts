@@ -244,14 +244,17 @@ describe('Lifecycle Module', () => {
       expect(sessions.has('test-platform:thread-123')).toBe(false);
     });
 
-    it('unpersists when requested', async () => {
+    it('HARD-removes persistence on an explicit kill (not soft-delete)', async () => {
       const session = createMockSession();
       const sessions = new Map([['test-platform:thread-123', session]]);
       const ctx = createMockSessionContext(sessions);
 
       await lifecycle.killSession(session, true, ctx);
 
-      expect(ctx.ops.unpersistSession).toHaveBeenCalledWith('test-platform:thread-123');
+      // Explicit !stop/!kill must hard-remove so the next mention starts
+      // fresh — a soft-delete would be resumed by the paused-session lookup.
+      expect(ctx.state.sessionStore.remove).toHaveBeenCalledWith('test-platform:thread-123');
+      expect(ctx.ops.unpersistSession).not.toHaveBeenCalled();
     });
 
     it('preserves persistence when not unpersisting', async () => {
@@ -262,6 +265,7 @@ describe('Lifecycle Module', () => {
       await lifecycle.killSession(session, false, ctx);
 
       expect(ctx.ops.unpersistSession).not.toHaveBeenCalled();
+      expect(ctx.state.sessionStore.remove).not.toHaveBeenCalled();
     });
 
     it('updates sticky message after killing', async () => {

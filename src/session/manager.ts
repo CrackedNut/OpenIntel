@@ -1096,7 +1096,10 @@ export class SessionManager extends EventEmitter {
     const persisted = this.registry.getPersistedByThreadId(threadId);
     if (persisted) {
       const sessionId = `${persisted.platformId}:${persisted.threadId}`;
-      this.sessionStore.softDelete(sessionId);
+      // Hard-remove on explicit !stop — see killSession: a soft-deleted
+      // record would be resumed on the next message, resurrecting the
+      // session the user just cancelled.
+      this.sessionStore.remove(sessionId);
     }
   }
 

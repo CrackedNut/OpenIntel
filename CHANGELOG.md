@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-06-11
+
+### Fixed
+- **`!stop` then mention no longer resurrects the old session.** `!stop`/`!kill` soft-deleted the session (kept for history), but the channel black-hole fix made the paused-session lookup resume soft-deleted records — so the next message after `!stop` reloaded the session with its old context instead of starting fresh. Explicit cancels (`!stop`, `!kill`, and `!stop` on a paused session) now **hard-remove** the session from persistence, so the next mention starts a clean new session. Crash/timeout soft-deletes stay resumable on purpose.
+
 ## [2.2.0] - 2026-06-11
 
 ### Fixed
