@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-11
+
+### Fixed
+- **`!model` now holds on large sessions.** `!model` resumes the conversation, so the picked model must be able to hold the session's *current* context. On a big session (e.g. 500k+ tokens) a standard-context model can't load it and Claude Code silently keeps a 1M-capable model — so the switch looked like it "didn't take" (it reported the old model). The picker's Opus and Fable entries now use their `[1m]` (1-million-context) tier so the switch holds on large sessions. Sonnet/Haiku stay standard-context (their `[1m]` tier isn't available on Pro/Max — it errors), which also means you can't switch a very large session *to* them; that's a context-window limit, not a bug. The flag plumbing was always correct — this is about offering context-capable model ids.
+
 ## [2.1.9] - 2026-06-11
 
 ### Fixed
