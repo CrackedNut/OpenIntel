@@ -179,6 +179,7 @@ function createMockSessionContext(sessions: Map<string, Session> = new Map()): S
         getStickyPostId: mock(() => null),
         load: mock(() => new Map()),
         findByPostId: mock(() => undefined),
+        findByThreadIdAnyState: mock(() => undefined),
       } as any,
       githubEmailsStore: {
         get: mock(() => undefined),
@@ -1302,8 +1303,11 @@ describe('authorization gate at sinks (#388)', () => {
       });
       const ctx = createMockSessionContext(new Map());
       (ctx.state.platforms as Map<string, PlatformClient>).set('test-platform', platform);
-      (ctx.state.sessionStore.load as any).mockReturnValue(
-        new Map([['test-platform:thread-paused', state]]),
+      // resumePausedSession uses the any-state lookup (same as the
+      // message-handler's paused check) — NOT load(), whose cleanedAt filter
+      // black-holed soft-deleted channel sessions.
+      (ctx.state.sessionStore.findByThreadIdAnyState as any).mockImplementation(
+        (threadId: string) => (threadId === (state.threadId as string) ? state : undefined),
       );
       return ctx;
     }
@@ -1334,6 +1338,66 @@ describe('authorization gate at sinks (#388)', () => {
       await lifecycle.resumePausedSession('thread-paused', 'continue', undefined, ctx, 'invited');
 
       expect(ctx.ops.acquireClaudeAccount).toHaveBeenCalled();
+    });
+
+    /**
+     * Regression (channel black hole, 2026-06-10): the message-handler's
+     * paused check uses the any-state lookup, which includes soft-deleted
+     * sessions. resumePausedSession used to re-load the store WITH the
+     * cleanedAt filter, find nothing, and silently return — so every channel
+     * post was classified "paused", resumed into nothing, and never fell
+     * through to start a fresh session. Resume must honor the exact lookup
+     * the routing decision was made with.
+     */
+    it('resumes a soft-deleted (cleanedAt) session instead of silently dropping it', async () => {
+      const ctx = contextWithPersisted(
+        persistedState({
+          mode: 'channel',
+          channelId: 'thread-paused',
+          cleanedAt: '2026-06-11T02:45:55.044Z',
+        }),
+      );
+
+      await lifecycle.resumePausedSession('thread-paused', 'yo', undefined, ctx, 'alice');
+
+      // Reaching resumeSession (account acquisition) proves the soft-deleted
+      // record was found and the resume actually proceeded.
+      expect(ctx.ops.acquireClaudeAccount).toHaveBeenCalled();
+    });
+
+    /**
+     * Regression: resumeSession validated state.threadId as a post via
+     * platform.getPost(). Channel-mode sessions carry the channelId there —
+     * GET /posts/<channelId> is always 404 — so every channel session was
+     * dropped on restart ("Thread deleted, skipping resume") and removed
+     * from the store. Channel mode must skip the post-exists check.
+     */
+    it('resumes a channel-mode session without requiring its threadId to be a post', async () => {
+      const state = persistedState({ mode: 'channel', channelId: 'thread-paused' });
+      const ctx = contextWithPersisted(state);
+      const platform = (ctx.state.platforms as Map<string, PlatformClient>).get('test-platform')!;
+      // The 404 case: there is no post with the channel's id.
+      (platform.getPost as any).mockImplementation(() => Promise.resolve(null));
+
+      await lifecycle.resumePausedSession('thread-paused', 'yo', undefined, ctx, 'alice');
+
+      // Channel mode must not even attempt the post lookup — the threadId is
+      // a channelId and the 404 would (wrongly) evict the session.
+      expect(platform.getPost).not.toHaveBeenCalled();
+      // Reaching account acquisition proves the resume got past the gate.
+      expect(ctx.ops.acquireClaudeAccount).toHaveBeenCalled();
+    });
+
+    it('still drops a thread-mode session whose root post was deleted', async () => {
+      const state = persistedState({ mode: 'thread' });
+      const ctx = contextWithPersisted(state);
+      const platform = (ctx.state.platforms as Map<string, PlatformClient>).get('test-platform')!;
+      (platform.getPost as any).mockImplementation(() => Promise.resolve(null));
+
+      await lifecycle.resumePausedSession('thread-paused', 'yo', undefined, ctx, 'alice');
+
+      expect(ctx.ops.acquireClaudeAccount).not.toHaveBeenCalled();
+      expect(ctx.state.sessionStore.remove).toHaveBeenCalledWith('test-platform:thread-paused');
     });
   });
 });

@@ -114,10 +114,19 @@ export async function restartClaudeSession(
   ctx: SessionContext,
   actionName: string
 ): Promise<boolean> {
-  // Stop the current Claude CLI
+  // Stop the current Claude CLI. Detach our listeners from the old instance
+  // BEFORE killing it: its exit event fires asynchronously after kill(), and
+  // the 'restarting' guard in handleExit loses the race whenever an
+  // intermediate step (e.g. the !cd confirmation post's defensive
+  // transitionTo('active')) moves the session out of 'restarting' first —
+  // the stale exit then tears down the session the restart just rebuilt.
   ctx.ops.stopTyping(session);
   transitionTo(session, 'restarting');
-  session.claude.kill();
+  const oldClaude = session.claude;
+  oldClaude.removeAllListeners('event');
+  oldClaude.removeAllListeners('exit');
+  oldClaude.removeAllListeners('rate-limit');
+  oldClaude.kill();
 
   // Flush any pending content
   await ctx.ops.flush(session);
@@ -136,6 +145,10 @@ export async function restartClaudeSession(
   // Start the new Claude CLI
   try {
     session.claude.start();
+    // Leave 'restarting' explicitly — nothing else is guaranteed to. The old
+    // CLI's exit listener used to do this as a side effect, but it's detached
+    // above (and racy: a defensive post-helper transition could beat it).
+    transitionTo(session, 'active');
     return true;
   } catch (err) {
     transitionTo(session, 'active');

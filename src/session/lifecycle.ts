@@ -255,22 +255,6 @@ export function handleRateLimit(session: Session, hit: RateLimitHit, ctx: Sessio
 }
 
 /**
- * Helper to find a persisted session by raw threadId.
- * Persisted sessions are keyed by composite sessionId, so we need to iterate.
- */
-function findPersistedByThreadId(
-  persisted: Map<string, PersistedSession>,
-  threadId: string
-): PersistedSession | undefined {
-  for (const session of persisted.values()) {
-    if (session.threadId === threadId) {
-      return session;
-    }
-  }
-  return undefined;
-}
-
-/**
  * Create a MessageManager for a session.
  * Handles all content, task list, question, and subagent operations.
  *
@@ -1223,12 +1207,17 @@ export async function resumeSession(
     return;
   }
 
-  // Verify thread still exists
-  const threadPost = await platform.getPost(state.threadId);
-  if (!threadPost) {
-    log.warn(`Thread ${shortId}... deleted, skipping resume`);
-    ctx.state.sessionStore.remove(`${state.platformId}:${state.threadId}`);
-    return;
+  // Verify thread still exists. Channel-mode sessions carry the channelId in
+  // threadId — there is no root post to fetch (GET /posts/<channelId> is
+  // always 404), so the check would wrongly drop every channel session on
+  // restart. The channel's existence is implied by the connected platform.
+  if (state.mode !== 'channel') {
+    const threadPost = await platform.getPost(state.threadId);
+    if (!threadPost) {
+      log.warn(`Thread ${shortId}... deleted, skipping resume`);
+      ctx.state.sessionStore.remove(`${state.platformId}:${state.threadId}`);
+      return;
+    }
   }
 
   // Check max sessions limit
@@ -1610,11 +1599,16 @@ export async function resumePausedSession(
   ctx: SessionContext,
   username: string
 ): Promise<void> {
-  // Find persisted session by raw threadId
-  const persisted = ctx.state.sessionStore.load();
-  const state = findPersistedByThreadId(persisted, threadId);
+  // Find persisted session by raw threadId. MUST use the same any-state
+  // lookup as the message-handler's paused check (`getPersistedByThreadId`):
+  // that check includes soft-deleted sessions, so filtering them out here
+  // (as the old `load()`-based lookup did via its cleanedAt filter) wedges
+  // the route — every message is classified "paused", resume finds nothing,
+  // and nothing falls through to start a fresh session. In channel mode that
+  // silently black-holed the whole channel until the 3-day purge.
+  const state = ctx.state.sessionStore.findByThreadIdAnyState(threadId);
   if (!state) {
-    log.debug(`No persisted session found for ${threadId.substring(0, 8)}...`);
+    log.warn(`No persisted session found for ${threadId.substring(0, 8)}... — cannot resume`);
     return;
   }
 

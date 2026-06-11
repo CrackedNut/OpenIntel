@@ -99,4 +99,55 @@ describe('restartClaudeSession', () => {
     expect(claudeEmitter.listenerCount('exit')).toBe(1);
     expect(claudeEmitter.listenerCount('rate-limit')).toBe(1);
   });
+
+  /**
+   * Regression: the killed CLI's exit event fires asynchronously after
+   * kill(). If our listeners are still attached to the OLD instance, that
+   * stale exit reaches handleExit — and whenever something has already moved
+   * the session out of 'restarting' (e.g. the !cd confirmation post's
+   * defensive transitionTo('active')), handleExit runs full cleanup and ends
+   * the session the restart just rebuilt. Seen live 2026-06-10: every
+   * channel-mode !cd killed its session ~300ms after the respawn.
+   */
+  it('detaches listeners from the replaced CLI so its stale exit never reaches handleExit', async () => {
+    const session = makeSession();
+    const ctx = makeCtx();
+    const oldClaude = session.claude as unknown as EventEmitter;
+    // Simulate the production wiring: the old instance had live bindings.
+    oldClaude.on('event', () => ctx.ops.handleEvent(session.sessionId, {} as never));
+    oldClaude.on('exit', (code: number) => ctx.ops.handleExit(session.sessionId, code));
+    oldClaude.on('rate-limit', () => {});
+
+    const ok = await restartClaudeSession(
+      session,
+      { workingDir: '/tmp' } as ClaudeCliOptions,
+      ctx,
+      'test'
+    );
+    expect(ok).toBe(true);
+
+    // The killed process exits late, after the restart completed.
+    oldClaude.emit('exit', 0);
+    oldClaude.emit('event', { type: 'result' });
+
+    expect(ctx.ops.handleExit).not.toHaveBeenCalled();
+    expect(ctx.ops.handleEvent).not.toHaveBeenCalled();
+  });
+
+  it('transitions the session out of restarting on successful start', async () => {
+    const session = makeSession();
+    session.lifecycle.state = 'active'; // legal source for -> restarting
+    const ctx = makeCtx();
+
+    const ok = await restartClaudeSession(
+      session,
+      { workingDir: '/tmp' } as ClaudeCliOptions,
+      ctx,
+      'test'
+    );
+    expect(ok).toBe(true);
+    // No stale exit listener flips this back anymore — the restart itself
+    // must leave the session usable.
+    expect(session.lifecycle.state).toBe('active');
+  });
 });

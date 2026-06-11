@@ -262,8 +262,16 @@ export async function handleMessage(
               );
             }
           }
+          return;
         }
-        // All commands in paused state are consumed (not passed as prompts)
+        // Other commands are consumed (not passed as prompts) — but never
+        // silently: an unexplained dead command here reads as a dead bot.
+        if (client.isUserAllowed(username)) {
+          await client.createPost(
+            `ℹ️ This session is paused — only ${formatter.formatCode('!stop')} works right now. Send a regular message to resume it first.`,
+            directReplyTo
+          );
+        }
         return;
       }
 
@@ -287,6 +295,12 @@ export async function handleMessage(
       if (content || files?.length) {
         void client.addReaction?.(post.id, ACK_SEEN_EMOJI).catch((err) => logSilentError('ack-reaction', err));
         await session.resumePausedSession(threadRoot, content, files, username);
+      } else if (client.isBotMentioned(message)) {
+        // Bare @mention at a paused session: answer instead of going silent.
+        await client.createPost(
+          `Mention me with your request to resume this session`,
+          directReplyTo
+        );
       }
       return;
     }

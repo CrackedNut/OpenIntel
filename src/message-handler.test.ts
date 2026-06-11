@@ -496,6 +496,48 @@ describe('handleMessage', () => {
 
       expect(session.resumePausedSession).not.toHaveBeenCalled();
     });
+
+    // Regression (2026-06-10): consumed-but-unanswered messages at a paused
+    // session read as a dead bot. Every consumed message must produce some
+    // visible feedback.
+    test('posts a hint instead of silently consuming non-stop commands', async () => {
+      const post: PlatformPost = {
+        id: 'post1',
+        platformId: 'test',
+        channelId: 'channel1',
+        userId: 'user1',
+        message: '!help',
+        rootId: 'thread1',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'user1', username: 'allowed-user', displayName: 'User' };
+
+      await handleMessage(client, session, post, user, options);
+
+      const postCalls = (client.createPost as any).mock.calls;
+      const lastMessage = postCalls[postCalls.length - 1]?.[0];
+      expect(lastMessage).toContain('paused');
+    });
+
+    test('answers a bare @mention at a paused session instead of going silent', async () => {
+      const post: PlatformPost = {
+        id: 'post1',
+        platformId: 'test',
+        channelId: 'channel1',
+        userId: 'user1',
+        message: '@claude-bot',
+        rootId: 'thread1',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'user1', username: 'allowed-user', displayName: 'User' };
+
+      await handleMessage(client, session, post, user, options);
+
+      expect(session.resumePausedSession).not.toHaveBeenCalled();
+      const postCalls = (client.createPost as any).mock.calls;
+      const lastMessage = postCalls[postCalls.length - 1]?.[0];
+      expect(lastMessage).toContain('Mention me with your request');
+    });
   });
 
   describe('new session', () => {
