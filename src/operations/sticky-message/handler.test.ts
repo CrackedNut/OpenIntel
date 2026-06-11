@@ -459,8 +459,12 @@ describe('buildStickyMessage', () => {
 
     const result = await buildStickyMessage(sessions, 'test-platform', testConfig, mockFormatter, (threadId) => `/_redirect/pl/${threadId}`);
 
-    expect(result).toContain('No topic');
-    expect(result).not.toContain('!worktree');
+    // Scope to the active-sessions block: the "✨ What's new" blurb is sourced
+    // from CHANGELOG.md and may legitimately mention bot commands, so assert
+    // the command isn't used as the TOPIC, not that it's absent everywhere.
+    const sessionsBlock = result.split('✨')[0];
+    expect(sessionsBlock).toContain('No topic');
+    expect(sessionsBlock).not.toContain('!worktree');
   });
 
   it('shows "No topic" for !cd commands', async () => {
@@ -472,8 +476,11 @@ describe('buildStickyMessage', () => {
 
     const result = await buildStickyMessage(sessions, 'test-platform', testConfig, mockFormatter, (threadId) => `/_redirect/pl/${threadId}`);
 
-    expect(result).toContain('No topic');
-    expect(result).not.toContain('!cd');
+    // Scope to the active-sessions block (see the !worktree test above) — the
+    // "✨ What's new" changelog blurb legitimately mentions bot commands.
+    const sessionsBlock = result.split('✨')[0];
+    expect(sessionsBlock).toContain('No topic');
+    expect(sessionsBlock).not.toContain('!cd');
   });
 
   it('uses sessionTitle when available instead of firstPrompt', async () => {
