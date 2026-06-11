@@ -734,12 +734,14 @@ async function startWithoutDaemon() {
   // Connect auto-update manager to session manager for !update commands
   session.setAutoUpdateManager(autoUpdateManager);
 
-  // Start the local web dashboard (127.0.0.1 only) unless disabled in config.
+  // Start the local web dashboard (127.0.0.1 by default; `panel.host` can
+  // widen the bind) unless disabled in config.
   if (config.panel?.enabled !== false) {
     try {
       const { startPanelServer } = await import('./panel/server.js');
       startPanelServer({
         port: config.panel?.port,
+        host: config.panel?.host,
         status: {
           version: VERSION,
           getPlatforms: () =>

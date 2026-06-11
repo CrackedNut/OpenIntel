@@ -233,8 +233,16 @@ export interface Config {
   agentPersona?: AgentPersonaConfig;
   /** Optional skills-index prepend — lists `~/.claude/skills/*` by name+description. */
   skillsIndex?: SkillsIndexConfig;
-  /** Local web dashboard (binds 127.0.0.1 only). Default: enabled on port 7777. */
-  panel?: { enabled?: boolean; port?: number };
+  /**
+   * Local web dashboard. Default: enabled on 127.0.0.1:7777.
+   *
+   * `host` overrides the bind address. Default `127.0.0.1` (loopback only).
+   * Set to `0.0.0.0` to bind all interfaces (reachable over Tailscale / LAN),
+   * or a specific interface IP to scope exposure. SECURITY: the panel has no
+   * auth and can edit config/persona and restart the bot — only widen the
+   * bind on a trusted network. See src/panel/server.ts.
+   */
+  panel?: { enabled?: boolean; port?: number; host?: string };
   platforms: PlatformInstanceConfig[];
 }
 

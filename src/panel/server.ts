@@ -1,7 +1,8 @@
 /**
  * Agent Dashboard — local web panel.
  *
- * Runs inside the bot process, bound to 127.0.0.1 only. Lets the operator:
+ * Runs inside the bot process, bound to 127.0.0.1 by default (override with
+ * `panel.host`). Lets the operator:
  *   - see bot status (version, platforms, active sessions)
  *   - edit config.yaml (platforms, tokens, modes) and restart to apply
  *   - edit the agent persona files (SOUL.md / DIRECTIVES.md)
@@ -11,9 +12,11 @@
  *     persisted into config.yaml via the shared agent-paths resolution)
  *   - restart the bot (exit 42 → daemon restarts it; sessions resume)
  *
- * SECURITY MODEL: localhost-only single-operator tool. No auth — anything
- * that can reach 127.0.0.1 on this machine already has your shell. Never
- * bind this to a public interface without adding auth first.
+ * SECURITY MODEL: single-operator tool with NO auth — anything that can reach
+ * it can edit your config/persona and restart the bot. Bound to 127.0.0.1 by
+ * default, where "can reach it" == "already has your shell". `panel.host` can
+ * widen the bind (e.g. `0.0.0.0` for Tailscale/LAN access); only do so on a
+ * trusted network, since there's still no authentication.
  */
 
 import { Hono } from 'hono';
@@ -79,6 +82,12 @@ function gitInfo(): { branch: string; sha: string } {
 
 export interface PanelOptions {
   port?: number;
+  /**
+   * Bind address. Default `127.0.0.1` (loopback only). `0.0.0.0` binds all
+   * interfaces (reachable over Tailscale/LAN). The panel has no auth — only
+   * widen this on a trusted network. See the SECURITY MODEL note above.
+   */
+  host?: string;
   status: PanelStatusProvider;
   /** Graceful restart: persist + disconnect, then exit(42) for the daemon. */
   requestRestart: () => Promise<void>;
@@ -462,7 +471,14 @@ export function startPanelServer(options: PanelOptions): { port: number; close: 
     return c.json({ ok: true, note: 'restarting — panel back in ~10s' });
   });
 
-  const server = serve({ fetch: app.fetch, port, hostname: '127.0.0.1' });
-  options.log('info', `🖥️  Agent dashboard: http://127.0.0.1:${port}`);
+  const host = options.host ?? '127.0.0.1';
+  const server = serve({ fetch: app.fetch, port, hostname: host });
+  // localhost is always the local URL; when bound wider, note the bind host
+  // too so the operator sees it's reachable off-box (and the no-auth caveat).
+  if (host === '127.0.0.1') {
+    options.log('info', `🖥️  Agent dashboard: http://127.0.0.1:${port}`);
+  } else {
+    options.log('info', `🖥️  Agent dashboard: http://127.0.0.1:${port} (also bound ${host}:${port} — no auth, trusted network only)`);
+  }
   return { port, close: () => server.close() };
 }

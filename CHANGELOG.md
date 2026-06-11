@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-06-11
+
+### Added
+- **`panel.host` — configurable dashboard bind address.** The dashboard still defaults to `127.0.0.1` (loopback only), but `panel.host` can widen the bind — e.g. `0.0.0.0` to reach it over Tailscale/LAN, or a specific interface IP to scope exposure. The startup log flags the wider bind and the no-auth caveat. The panel has no authentication and can edit config/persona and restart the bot, so only widen this on a trusted network.
+
 ## [2.1.0] - 2026-06-11
 
 ### Added
