@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.7] - 2026-06-11
+
+### Fixed
+- **`!model` reactions did nothing.** The picker post wasn't registered in the post→session index, so a number reaction on it couldn't be resolved back to the session and was silently dropped (on every platform). `showModelPicker` now registers the picker post like the worktree prompt does, so reactions land and switch the model.
+
 ## [2.1.6] - 2026-06-11
 
 ### Changed

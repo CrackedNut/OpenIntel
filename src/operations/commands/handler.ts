@@ -905,7 +905,7 @@ export async function showModelPicker(
   session: Session,
   username: string,
   setDefault: boolean,
-  _ctx: SessionContext,
+  ctx: SessionContext,
 ): Promise<void> {
   if (!await requireSessionOwner(session, username, 'change the model')) return;
   const formatter = session.platform.getFormatter();
@@ -926,6 +926,10 @@ export async function showModelPicker(
   const replyTo = session.mode === 'channel' ? session.channelId : session.threadId;
   const picker = await session.platform.createInteractivePost(body, reactions, replyTo);
   session.pendingModelPick = { postId: picker.id, setDefault };
+  // Register the picker post so a reaction on it resolves back to this session
+  // (the reaction router looks the session up by post id). Without this the
+  // reactions are silently dropped — they map to no session.
+  ctx.ops.registerPost(picker.id, session.threadId);
   session.threadLogger?.logCommand('model', setDefault ? '--default (picker)' : '(picker)', username);
 }
 

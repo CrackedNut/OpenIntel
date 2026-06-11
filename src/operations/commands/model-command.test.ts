@@ -69,6 +69,7 @@ function makeSession(): Session {
 
 function makeCtx() {
   const setDefaultModel = mock((_m: string | null) => {});
+  const registerPost = mock((_pid: string, _tid: string) => {});
   const ctx = {
     config: { chromeEnabled: false, permissionMode: 'bypass', permissionTimeoutMs: 1000 },
     state: {},
@@ -79,11 +80,12 @@ function makeCtx() {
       handleExit: mock(async () => {}),
       persistSession: mock(() => {}),
       setDefaultModel,
+      registerPost,
       updateSessionHeader: mock(async () => {}),
       emitSessionUpdate: mock(() => {}),
     },
   } as unknown as SessionContext;
-  return { ctx, setDefaultModel };
+  return { ctx, setDefaultModel, registerPost };
 }
 
 describe('showModelPicker', () => {
@@ -94,6 +96,14 @@ describe('showModelPicker', () => {
 
     expect((session as unknown as { __reactions: () => string[] }).__reactions().length).toBe(MODEL_CHOICES.length);
     expect(session.pendingModelPick).toEqual({ postId: 'picker-1', setDefault: false });
+  });
+
+  it('registers the picker post so reactions on it resolve to the session', async () => {
+    const session = makeSession();
+    const { ctx, registerPost } = makeCtx();
+    await showModelPicker(session, 'alice', false, ctx);
+    // Without this the reaction router can't find the session → picks are dropped.
+    expect(registerPost).toHaveBeenCalledWith('picker-1', session.threadId);
   });
 
   it('records setDefault when opened with --default', async () => {
