@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.2] - 2026-06-11
+
+### Fixed
+- **Sending images/files now works in channel-mode sessions.** `send_file` passed the session's thread id as the upload's reply target — but in channel mode that id is the *channel* id, so Mattermost rejected the attachment post with 400 "Invalid RootId" (the file bytes uploaded fine; the post referencing them failed). The upload now follows the same rule as permission prompts: channel-mode uploads post root-less to the session's channel. Slack got the matching fix (an empty `thread_ts` is omitted instead of sent); Discord was already correct.
+
 ## [2.2.1] - 2026-06-11
 
 ### Fixed

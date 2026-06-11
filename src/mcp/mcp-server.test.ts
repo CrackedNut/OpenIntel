@@ -504,6 +504,27 @@ describe('handleSendFileWith', () => {
     expect(api.uploadFileCalls[0].options?.filename).toBe('screenshot.png');
   });
 
+  it('channel mode: uploads to channel root instead of passing the channelId as thread root', async () => {
+    const api = new FakeApi();
+    api.uploadFileImpl = async () => ({ postId: 'POST-456' });
+    const result = await handleSendFileWith(
+      { path: okFile },
+      makeSendFileCfg(api, { mode: 'channel', threadId: 'n5rf5zzfejdginf9wiu3bycm7e' }),
+    );
+    expect(result).toEqual({ ok: true, postId: 'POST-456' });
+    expect(api.uploadFileCalls).toHaveLength(1);
+    // In channel mode threadId carries the channelId — Mattermost rejects it
+    // as a root_id with 400 "Invalid RootId". The upload must go root-less.
+    expect(api.uploadFileCalls[0].threadId).toBe('');
+  });
+
+  it('thread mode: passes the threadId through as the upload root', async () => {
+    const api = new FakeApi();
+    const result = await handleSendFileWith({ path: okFile }, makeSendFileCfg(api, { mode: 'thread' }));
+    expect(result.ok).toBe(true);
+    expect(api.uploadFileCalls[0].threadId).toBe('THREAD');
+  });
+
   it('returns ok:false when feature disabled, without calling uploadFile', async () => {
     const api = new FakeApi();
     const result = await handleSendFileWith({ path: okFile }, makeSendFileCfg(api, { enabled: false }));

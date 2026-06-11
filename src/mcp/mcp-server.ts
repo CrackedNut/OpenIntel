@@ -231,9 +231,9 @@ export interface PermissionHandlerConfig {
 }
 
 /**
- * Compute the rootId to pass to `createInteractivePost` from the MCP
- * server: undefined in channel mode (post at channel root), the session
- * threadId otherwise. Extracted so call sites can't drift.
+ * Compute the rootId to pass to `createInteractivePost` / `uploadFile`
+ * from the MCP server: undefined in channel mode (post at channel root),
+ * the session threadId otherwise. Extracted so call sites can't drift.
  */
 function postRootIdFor(mode: 'channel' | 'thread' | undefined, threadId: string | undefined): string | undefined {
   return mode === 'channel' ? undefined : threadId;
@@ -513,6 +513,13 @@ export interface SendFileResult {
 export interface SendFileHandlerConfig {
   api: McpPlatformApi;
   threadId: string;
+  /**
+   * Session mode. In channel mode `threadId` carries the channelId —
+   * Mattermost rejects it as a root_id (400 "Invalid RootId") and Slack as
+   * a thread_ts — so the upload must post root-less to the session's
+   * channel instead (same rule as `postRootIdFor`).
+   */
+  mode?: 'channel' | 'thread';
   enabled: boolean;
   allowedRoots: string[];
   maxBytes: number;
@@ -549,10 +556,14 @@ export async function handleSendFileWith(
   }
 
   try {
-    const result = await cfg.api.uploadFile(validated.resolvedPath, cfg.threadId, {
-      caption: args.caption,
-      filename: validated.basename,
-    });
+    const result = await cfg.api.uploadFile(
+      validated.resolvedPath,
+      postRootIdFor(cfg.mode, cfg.threadId) ?? '',
+      {
+        caption: args.caption,
+        filename: validated.basename,
+      },
+    );
     return { ok: true, postId: result.postId };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -565,6 +576,7 @@ async function handleSendFile(args: { path: string; caption?: string }): Promise
   return handleSendFileWith(args, {
     api: getApi(),
     threadId: PLATFORM_THREAD_ID,
+    mode: PLATFORM_MODE === 'channel' ? 'channel' : 'thread',
     enabled: OUTBOUND_FILES_ENABLED,
     allowedRoots: [SESSION_WORKING_DIR, SESSION_UPLOAD_DIR].filter(p => p.length > 0),
     maxBytes: OUTBOUND_FILES_MAX_BYTES,

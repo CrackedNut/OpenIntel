@@ -114,6 +114,34 @@ describe('uploadFileSlack', () => {
     expect(parsed.files).toEqual([{ id: 'F1', title: 'voice memo' }]);
   });
 
+  it('omits thread_ts when threadTs is empty (channel-mode upload)', async () => {
+    mockFetch([
+      () =>
+        new Response(
+          JSON.stringify({ ok: true, upload_url: 'https://files.slack.com/upload/X2', file_id: 'F2' }),
+          { status: 200 },
+        ),
+      () => new Response('OK', { status: 200 }),
+      () =>
+        new Response(JSON.stringify({ ok: true, files: [{ id: 'F2' }], ts: '1700000001.000200' }), {
+          status: 200,
+        }),
+    ]);
+
+    await uploadFileSlack({
+      botToken: 'xoxb-test',
+      channelId: 'C123',
+      threadTs: '',
+      filePath,
+      filename: 'voice.mp3',
+      apiUrl: 'https://mock.slack/api',
+    });
+
+    const parsed = JSON.parse(calls[2].bodyText!);
+    expect(parsed.channel_id).toBe('C123');
+    expect('thread_ts' in parsed).toBe(false);
+  });
+
   it('falls back to fileId when complete returns no ts (and warns)', async () => {
     mockFetch([
       () =>

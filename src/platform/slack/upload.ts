@@ -9,7 +9,7 @@ export interface SlackUploadArgs {
   /** Bot token (xoxb-...) */
   botToken: string;
   channelId: string;
-  /** Thread parent ts. Required so file lands in the right thread. */
+  /** Thread parent ts. Empty string posts to the channel root (channel-mode). */
   threadTs: string;
   filePath: string;
   /** Filename to surface in chat. Caller is responsible for sanitization. */
@@ -100,12 +100,16 @@ export async function uploadFileSlack(args: SlackUploadArgs): Promise<SlackUploa
     throw new Error(`Slack file bytes upload failed: ${step2Response.status} ${text}`);
   }
 
-  // Step 3: complete and attach to channel/thread.
+  // Step 3: complete and attach to channel/thread. Channel-mode sessions
+  // pass an empty threadTs — omit thread_ts entirely so the file posts to
+  // the channel instead of erroring on a non-ts value.
   const step3Body: Record<string, unknown> = {
     files: [{ id: fileId, title: caption ?? filename }],
     channel_id: channelId,
-    thread_ts: threadTs,
   };
+  if (threadTs) {
+    step3Body.thread_ts = threadTs;
+  }
   if (caption !== undefined) {
     step3Body.initial_comment = caption;
   }
