@@ -150,9 +150,71 @@ export const PANEL_HTML = `<!doctype html>
   .toast.err { background: var(--red); }
   @keyframes rise { from { opacity: 0; transform: translateY(8px);} to { opacity: 1; transform: none;} }
 
+  /* tablet: narrow the rail, single-column master/detail */
   @media (max-width: 900px) {
-    .app { grid-template-columns: 1fr; } aside { position: static; height: auto; flex-direction: row; align-items: center; }
-    nav { flex-direction: row; flex-wrap: wrap; } .side-foot { margin: 0 0 0 auto; } .split { grid-template-columns: 1fr; }
+    .app { grid-template-columns: 200px 1fr; }
+    .main { padding: 26px 22px 56px; }
+    .split { grid-template-columns: 1fr; }
+  }
+
+  /* phone / small tablet: sidebar becomes a sticky top app-bar */
+  @media (max-width: 760px) {
+    /* auto top-bar row + content row — without explicit rows the grid's
+       default align-content:stretch balloons the bar to fill the viewport */
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+
+    aside {
+      position: sticky; top: 0; z-index: 40; height: auto;
+      display: grid; grid-template-columns: 1fr auto;
+      grid-template-areas: "brand actions" "nav nav";
+      align-items: center; gap: 8px;
+      padding: 10px 12px 8px;
+      box-shadow: 0 2px 12px rgba(31,30,27,.22);
+    }
+    .brand { grid-area: brand; padding: 0 2px; }
+    .brand .mark { font-size: 17px; }
+
+    /* horizontally-scrollable nav strip, bled to the screen edges */
+    nav {
+      grid-area: nav; flex-direction: row; flex-wrap: nowrap;
+      gap: 4px; overflow-x: auto; overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      margin: 0 -12px; padding: 2px 12px;
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav a { flex: 0 0 auto; white-space: nowrap; padding: 8px 13px; }
+
+    /* compact icon-only actions in the top-right; status text hidden */
+    .side-foot { grid-area: actions; margin: 0; padding: 0; display: flex; gap: 8px; }
+    .side-foot .side-meta { display: none; }
+    .restart-btn { width: auto; margin: 0 !important; padding: 8px 11px; font-size: 12px; }
+    .restart-btn .lbl { display: none; }
+    .restart-btn .rico { font-size: 14px; }
+
+    .main { padding: 18px 14px 48px; max-width: none; }
+    .page-head { margin-bottom: 16px; }
+    .page-head h1 { font-size: 22px; }
+
+    .stat-grid { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .card { padding: 16px; }
+
+    .browser .entries { max-height: 42vh; }
+    .browser .foot { flex-wrap: wrap; }
+
+    .editor-bar { flex-wrap: wrap; gap: 10px; }
+    textarea, textarea.tall { min-height: 50vh; }
+
+    /* long mono paths must wrap, not force a horizontal scroll */
+    .where, .resolved, .detail .where { word-break: break-word; overflow-wrap: anywhere; }
+
+    .toasts { left: 12px; right: 12px; bottom: 12px; }
+    .toast { max-width: none; }
+  }
+
+  /* very narrow: one stat card per row */
+  @media (max-width: 380px) {
+    .stat-grid { grid-template-columns: 1fr; }
+    .brand .mark { font-size: 16px; }
   }
 </style>
 </head>
@@ -172,8 +234,8 @@ export const PANEL_HTML = `<!doctype html>
     </nav>
     <div class="side-foot">
       <div class="side-meta" id="sidemeta">—</div>
-      <button class="restart-btn" style="margin-bottom:8px" onclick="updateBot()">↑ Update &amp; restart</button>
-      <button class="restart-btn" onclick="restartBot()">⟳ Restart bot</button>
+      <button class="restart-btn" style="margin-bottom:8px" title="Update &amp; restart" onclick="updateBot()"><span class="rico">↑</span><span class="lbl"> Update &amp; restart</span></button>
+      <button class="restart-btn" title="Restart bot" onclick="restartBot()"><span class="rico">⟳</span><span class="lbl"> Restart bot</span></button>
     </div>
   </aside>
 

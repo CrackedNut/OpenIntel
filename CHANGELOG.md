@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.2] - 2026-06-11
+
+### Fixed
+- **Mobile-friendly dashboard.** The agent dashboard was unusable on phones — the sidebar crammed the brand, all eight nav links, the status text and two full-width buttons into one wrapping row. Below 760px the sidebar now becomes a sticky top app-bar: brand + compact icon actions on top, a horizontally-scrollable nav strip below, tighter content padding, two-up (then one-up) stat cards, wrapping editor bars, full-width toasts, and long mono paths that wrap instead of forcing a horizontal scroll.
+
 ## [2.1.1] - 2026-06-11
 
 ### Added
