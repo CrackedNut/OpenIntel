@@ -28,6 +28,7 @@ OpenIntel is a multi-platform agent bot that lets users interact with Claude Cod
 ## Contribution Conventions
 
 - **Pull request titles, bodies, commit messages, and the CHANGELOG are written in English.**
+- **Before changing the platform / session / command layers, read [docs/AGENT_DEVELOPMENT.md](docs/AGENT_DEVELOPMENT.md)** — the dev workflow, release/deploy flow, the channel-mode/allChannels model, and the specific traps (reaction post-registration, respawn stale-exit races, soft-delete black-holes) that have actually bitten.
 
 ## Architecture Overview
 
