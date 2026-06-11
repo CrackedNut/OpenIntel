@@ -9,7 +9,7 @@
  */
 
 import type { Session, SessionUsageStats, ModelTokenUsage } from '../../session/types.js';
-import { getSessionStatus, markClaudeResponded } from '../../session/types.js';
+import { getSessionStatus, markClaudeResponded, isSessionInterrupted } from '../../session/types.js';
 import type { ClaudeEvent } from '../../claude/cli.js';
 import { shortenPath } from '../index.js';
 import { withErrorHandling } from '../../utils/error-handler/index.js';
@@ -256,7 +256,18 @@ export function handleEventPostProcessing(
     // Claude was processing. Joined with blank lines so Claude sees them as
     // one coherent follow-up. Fire-and-forget — the post is recoverable from
     // logs if it fails, and we don't want to block the result-event pipeline.
-    void flushQueuedUserMessages(session, ctx);
+    //
+    // EXCEPT when an interrupt is in flight (`!steer` / `!escape`): SIGINT
+    // makes Claude emit this final result and then EXIT. Delivering the
+    // queue now would call handleUserMessage on a dying process and flip the
+    // session back to 'active', so the imminent exit lands in handleExit's
+    // normal-end path and KILLS the session instead of pausing it (observed
+    // 2026-06-11: `!steer` ended the session, then the next message resumed
+    // it with the jarring "resumed after bot restart" notice). Leave the
+    // queue intact — handleExit pauses + persists it, and resume drains it.
+    if (!isSessionInterrupted(session)) {
+      void flushQueuedUserMessages(session, ctx);
+    }
   }
 
   // Track tool errors for bug reporting context

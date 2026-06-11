@@ -246,6 +246,13 @@ export function isSessionRestarting(session: Session): boolean {
 }
 
 /**
+ * Check if session is mid-interrupt (`!escape` / `!steer` SIGINT in flight).
+ */
+export function isSessionInterrupted(session: Session): boolean {
+  return session.lifecycle.state === 'interrupted';
+}
+
+/**
  * Check if session has been cancelled.
  */
 export function isSessionCancelled(session: Session): boolean {

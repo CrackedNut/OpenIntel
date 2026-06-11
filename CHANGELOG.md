@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.4] - 2026-06-11
+
+### Fixed
+- **`!steer` no longer ends the session.** SIGINT makes Claude emit a final `result` event and then exit; the result handler was flushing the steer queue at that moment, delivering it into the dying process and flipping the session back to `active` — so the imminent exit hit the normal-end path and killed the session (the next message then resumed it with a jarring "resumed after bot restart" notice). The queue is now left intact while an interrupt is in flight, so the session pauses cleanly and the steer drains on resume.
+
 ## [2.1.3] - 2026-06-11
 
 ### Added

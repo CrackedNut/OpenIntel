@@ -357,4 +357,26 @@ describe('handleEventPostProcessing', () => {
     await new Promise(r => setTimeout(r, 0));
     expect(handleUserMessage).not.toHaveBeenCalled();
   });
+
+  // Regression (2026-06-11): `!steer` interrupts Claude, which emits this
+  // final `result` and then EXITS. Flushing the queue here would deliver into
+  // the dying process and flip the session to 'active', so the exit kills the
+  // session instead of pausing it. While interrupted, the queue must be left
+  // intact for resume to drain.
+  test('does NOT flush the queue on the result emitted during an interrupt', async () => {
+    const handleUserMessage = mock(() => Promise.resolve(true));
+    session.messageManager = {
+      ...(session.messageManager ?? {}),
+      handleUserMessage,
+    } as unknown as typeof session.messageManager;
+    session.queuedUserMessages = ['STEER: pivot'];
+    session.lifecycle.state = 'interrupted';
+
+    handleEventPostProcessing(session, { type: 'result' }, ctx);
+
+    // Queue preserved (not cleared), and no delivery into the dying process.
+    expect(session.queuedUserMessages).toEqual(['STEER: pivot']);
+    await new Promise(r => setTimeout(r, 0));
+    expect(handleUserMessage).not.toHaveBeenCalled();
+  });
 });
