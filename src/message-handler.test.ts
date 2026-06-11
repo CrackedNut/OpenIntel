@@ -1878,6 +1878,40 @@ describe('handleMessage', () => {
       expect(initialOptions.forceThreadMode).toBe(true);
     });
 
+    test('!thread on a native-thread platform (Discord) runs channel-mode in the new thread', async () => {
+      (session.findChannelSession as any).mockImplementation(() => undefined);
+      (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);
+      (client.isBotMentioned as any).mockImplementation(() => true);
+      (client.extractPrompt as any).mockImplementation(() => '!thread do the thing');
+      (client.isUserAllowed as any).mockImplementation(() => true);
+      // Platform supports real thread channels (like Discord).
+      (client as any).createThread = mock(async () => ({ id: 'thread-chan-42' }));
+
+      const post: PlatformPost = {
+        id: 'p-thread-anchor',
+        rootId: '',
+        channelId: 'c-9',
+        userId: 'u-1',
+        message: '@bot !thread do the thing',
+        platformId: 'test-platform',
+        createAt: Date.now(),
+      };
+      const user: PlatformUser = { id: 'u-1', username: 'allowed-user', displayName: 'Alice' };
+      (client.getHomeChannelId as any).mockImplementation(() => post.channelId);
+
+      await handleMessage(client, session, post, user, options);
+
+      // The native thread was created off the @mention post.
+      expect((client as any).createThread).toHaveBeenCalledWith('c-9', 'p-thread-anchor', 'Claude session');
+      const startArgs = (session.startSession as any).mock.calls[0];
+      const threadRoot = startArgs[2];
+      const initialOptions = startArgs[6];
+      // Session lives IN the thread channel, in channel mode.
+      expect(threadRoot).toBe('thread-chan-42');
+      expect(initialOptions.channelMode).toEqual({ channelId: 'thread-chan-42' });
+      expect(initialOptions.originChannelId).toBe('thread-chan-42');
+    });
+
     test('!thread inside an existing thread posts a hint and starts normally', async () => {
       (session.registry.findByThreadId as any).mockImplementation(() => undefined);
       (session.registry.getPersistedByThreadId as any).mockImplementation(() => undefined);

@@ -68,6 +68,14 @@ describe('DiscordClient login error guidance', () => {
   });
 });
 
+describe('DiscordClient createThread', () => {
+  it('returns null (not throw) when there is no live gateway client', async () => {
+    const c = makeClient();
+    const res = await c.createThread('chan-1', 'msg-1', 'topic');
+    expect(res).toBeNull();
+  });
+});
+
 describe('DiscordClient identity & config', () => {
   it('reports the home channel and discord mcp config', () => {
     const c = makeClient();

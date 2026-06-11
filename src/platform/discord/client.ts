@@ -369,6 +369,34 @@ export class DiscordClient extends BasePlatformClient {
     };
   }
 
+  /**
+   * Start a native Discord thread hanging off the anchor message. Returns the
+   * thread channel's id — which becomes the session's channel (a Discord
+   * thread is just another text channel, so it runs as a channel-mode
+   * session). Needs the "Create Public Threads" permission.
+   */
+  async createThread(
+    parentChannelId: string,
+    anchorPostId: string,
+    name: string,
+  ): Promise<{ id: string } | null> {
+    try {
+      const channel = await this.resolveChannel(parentChannelId);
+      if (!channel || !('messages' in channel)) return null;
+      const msg = await channel.messages.fetch(anchorPostId);
+      const thread = await msg.startThread({
+        name: (name || 'Claude session').slice(0, 100),
+        autoArchiveDuration: 1440,
+      });
+      // No index needed — resolveChannel fetches the thread directly (a
+      // Discord thread is a channel), so replies via createPost(thread.id) work.
+      return { id: thread.id };
+    } catch (err) {
+      log.warn(`createThread failed: ${err}`);
+      return null;
+    }
+  }
+
   async updatePost(postId: string, message: string): Promise<PlatformPost> {
     const channelId = this.messageChannel.get(postId) ?? this.channelId;
     const channel = await this.resolveChannel(channelId);

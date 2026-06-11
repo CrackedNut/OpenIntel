@@ -426,8 +426,21 @@ export async function handleMessage(
     let effectiveThreadRoot = threadRoot;
     if (initialOptions.forceThreadMode) {
       if (isChannelPost) {
-        initialOptions.channelMode = undefined;
-        effectiveThreadRoot = post.id;
+        // Platforms with real thread CHANNELS (Discord): create the native
+        // thread off the @mention and run a channel-mode session inside it.
+        // Reply-threading platforms (Mattermost/Slack): anchor a thread-mode
+        // session at the @mention post (channelMode cleared).
+        const nativeThread = client.createThread
+          ? await client.createThread(post.channelId, post.id, 'Claude session')
+          : null;
+        if (nativeThread) {
+          initialOptions.channelMode = { channelId: nativeThread.id };
+          initialOptions.originChannelId = nativeThread.id;
+          effectiveThreadRoot = nativeThread.id;
+        } else {
+          initialOptions.channelMode = undefined;
+          effectiveThreadRoot = post.id;
+        }
         // `!thread ... -history`: the flag rides in the remainder (the
         // !thread stackable pattern has no arg group), so it lands in the
         // prompt. Strip the standalone token and seed the session with the

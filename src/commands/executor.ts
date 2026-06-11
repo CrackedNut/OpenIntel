@@ -402,17 +402,37 @@ const handleThread: CommandHandler = async (ctx, args) => {
       if (historyContext) prompt = `${historyContext}${prompt}`;
     }
 
-    await ctx.sessionManager.startSession(
-      { prompt },
-      ctx.username,
-      anchor.id,
-      platformId,
-      undefined,
-      ctx.triggeringPostId,
-      // originChannelId keeps the MCP child and reply routing in the
-      // channel the !thread came from (no-op for the home channel).
-      { forceThreadMode: true, threadTopic: topic, originChannelId: ctx.threadId },
-    );
+    // Platforms with real thread CHANNELS (Discord): create the native thread
+    // off the anchor and run a channel-mode session INSIDE it — on those
+    // platforms a thread is just another channel. Reply-threading platforms
+    // (Mattermost/Slack) anchor a thread-mode session off the anchor post id.
+    const nativeThread = ctx.client.createThread
+      ? await ctx.client.createThread(ctx.threadId, anchor.id, topic ?? 'Claude session')
+      : null;
+
+    if (nativeThread) {
+      await ctx.sessionManager.startSession(
+        { prompt },
+        ctx.username,
+        nativeThread.id,
+        platformId,
+        undefined,
+        ctx.triggeringPostId,
+        { channelMode: { channelId: nativeThread.id }, threadTopic: topic, originChannelId: nativeThread.id },
+      );
+    } else {
+      await ctx.sessionManager.startSession(
+        { prompt },
+        ctx.username,
+        anchor.id,
+        platformId,
+        undefined,
+        ctx.triggeringPostId,
+        // originChannelId keeps the MCP child and reply routing in the
+        // channel the !thread came from (no-op for the home channel).
+        { forceThreadMode: true, threadTopic: topic, originChannelId: ctx.threadId },
+      );
+    }
     return { handled: true };
   }
 

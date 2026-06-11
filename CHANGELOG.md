@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.9] - 2026-06-11
+
+### Fixed
+- **`!thread` now creates a real thread on Discord.** Previously `!thread` posted the "🧵 Thread session" announcement but the session couldn't reply — OpenIntel keyed the session off the anchor *message* id and replied to it, which works on Mattermost/Slack (reply-threading) but not Discord, where a thread is its own *channel* and a message id isn't sendable. The platform layer gained an optional `createThread`; on Discord, `!thread` now spins up a native thread off the anchor and runs a channel-mode session inside it (needs the "Create Public Threads" permission). Mattermost/Slack behavior is unchanged.
+
 ## [2.1.8] - 2026-06-11
 
 ### Changed

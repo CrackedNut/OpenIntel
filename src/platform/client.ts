@@ -160,6 +160,17 @@ export interface PlatformClient extends EventEmitter {
   createPost(message: string, threadId?: string): Promise<PlatformPost>;
 
   /**
+   * Create a NATIVE platform thread off an anchor message and return the new
+   * thread's id (its channel id, on platforms where threads are channels).
+   *
+   * Only platforms with real thread channels implement this (Discord).
+   * Mattermost/Slack model threads as replies to a root post, so they leave
+   * it undefined and `!thread` keys the session off the anchor post id
+   * instead. Returns null if the thread couldn't be created.
+   */
+  createThread?(parentChannelId: string, anchorPostId: string, name: string): Promise<{ id: string } | null>;
+
+  /**
    * Update an existing post/message
    * @param postId - Post ID to update
    * @param message - New message text
