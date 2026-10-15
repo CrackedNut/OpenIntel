@@ -101,6 +101,15 @@ export interface PlatformClient extends EventEmitter {
   getUserByUsername(username: string): Promise<PlatformUser | null>;
 
   /**
+   * Human-readable name for a channel, used as the session's agent name.
+   * Public/private channels → their channel name (e.g. `nook-dev`);
+   * DMs → `dm-<other username>`; group DMs → their display name.
+   * Optional: platforms that don't implement it fall back to the
+   * working-directory name. Returns null when the lookup fails.
+   */
+  getChannelName?(channelId: string): Promise<string | null>;
+
+  /**
    * Check if a username is in the allowed users list
    */
   isUserAllowed(username: string): boolean;

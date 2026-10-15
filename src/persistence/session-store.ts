@@ -48,6 +48,8 @@ export interface PersistedSession {
   channelId?: string;
   /** Per-session model override (`!model`); passed to `claude --model` on resume. */
   modelOverride?: string;
+  /** Stable agent name (`claude --name`) — see makeAgentName. */
+  agentName?: string;
   claudeSessionId: string;       // UUID for --session-id / --resume
   startedBy: string;             // Username who started the session
   startedByDisplayName?: string; // Display name for UI

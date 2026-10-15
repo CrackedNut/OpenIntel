@@ -16,6 +16,7 @@ import {
 import type { OverheadVisibility, PermissionMode } from '../config/index.js';
 import { DEFAULT_OVERHEAD_VISIBILITY } from '../config/index.js';
 import { clearAllTimers } from './timer-manager.js';
+import { resolveAgentName } from '../claude/agent-name.js';
 import { isAuthorizedForSession } from './authorization.js';
 import type { PlatformClient, PlatformFile } from '../platform/index.js';
 import type { ClaudeCliOptions, ClaudeEvent, RateLimitHit } from '../claude/cli.js';
@@ -1000,6 +1001,14 @@ export async function startSession(
     log.info(`Session ${sessionId.substring(0, 20)} reserved Claude account "${claudeAccount.id}"`);
   }
 
+  // Stable agent name (`claude --name`) — the chat's channel name; see agent-name.ts.
+  const agentName = await resolveAgentName(platform, {
+    workingDir,
+    platformId,
+    threadId: actualThreadId,
+    channelId: channelMode?.channelId ?? initialOptions?.originChannelId ?? platformMcpConfig.channelId,
+    channelMode: !!channelMode,
+  });
   const cliOptions: ClaudeCliOptions = {
     workingDir,
     threadId: actualThreadId,
@@ -1016,6 +1025,7 @@ export async function startSession(
     // session tracks it as `modelOverride` below so respawns (!cd, etc.) and
     // resume keep it, and `!model` can change it per-session.
     model: ctx.config.defaultModel,
+    agentName,
     sessionId: claudeSessionId,
     resume: false,
     chrome: ctx.config.chromeEnabled,
@@ -1049,6 +1059,7 @@ export async function startSession(
     // Effective session model: starts at the configured default, then `!model`
     // can change it. Persisted so it survives restart; used by every respawn.
     modelOverride: ctx.config.defaultModel,
+    agentName,
     // `!thread <topic>` names the session up front; the auto-title metadata
     // pass skips sessions that already have a title.
     sessionTitle: initialOptions?.threadTopic?.substring(0, 80) || undefined,
@@ -1360,6 +1371,15 @@ export async function resumeSession(
     );
   }
 
+  // Older sessions.json entries have no agentName — derive it once; it is
+  // persisted from here on, so the chat keeps this name forever.
+  const resumedAgentName = state.agentName ?? await resolveAgentName(platform, {
+    workingDir: state.workingDir,
+    platformId,
+    threadId: state.threadId,
+    channelId: state.channelId ?? platformMcpConfig.channelId,
+    channelMode: state.mode === 'channel',
+  });
   const cliOptions: ClaudeCliOptions = {
     workingDir: state.workingDir,
     threadId: state.threadId,
@@ -1374,6 +1394,7 @@ export async function resumeSession(
     permissionMode: resumePermissionMode,
     // Restore the session's model override so resume keeps the chosen model.
     model: state.modelOverride,
+    agentName: resumedAgentName,
     sessionId: state.claudeSessionId,
     resume: true,
     chrome: ctx.config.chromeEnabled,
@@ -1450,6 +1471,7 @@ export async function resumeSession(
     mode: state.mode,
     channelId: state.channelId,
     modelOverride: state.modelOverride,
+    agentName: resumedAgentName,
     // Thread logger for persisting events to disk (appends to existing log)
     threadLogger: createThreadLogger(platformId, state.threadId, state.claudeSessionId, {
       enabled: ctx.config.threadLogsEnabled ?? true,

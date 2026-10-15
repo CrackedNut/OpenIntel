@@ -719,6 +719,7 @@ export class SessionManager extends EventEmitter {
       mode: session.mode,
       channelId: session.channelId,
       modelOverride: session.modelOverride,
+      agentName: session.agentName,
     };
     this.sessionStore.save(session.sessionId, state);
   }

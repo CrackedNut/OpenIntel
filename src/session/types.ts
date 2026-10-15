@@ -358,6 +358,8 @@ export interface Session {
    * set only via `!model --default`). Undefined → inherit the default.
    */
   modelOverride?: string;
+  /** Stable agent name passed as `claude --name`; persisted so it never changes for this chat. */
+  agentName?: string;
   startedAt: Date;
   lastActivityAt: Date;
   sessionNumber: number;  // Session # when created

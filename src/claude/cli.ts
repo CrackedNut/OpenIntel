@@ -139,6 +139,11 @@ export interface ClaudeCliOptions {
    * whatever the spawned `claude` resolves by default.
    */
   model?: string;
+  /**
+   * Stable display/peer name for the session, passed as `claude --name`.
+   * See `makeAgentName` — persisted per chat so it survives restarts.
+   */
+  agentName?: string;
   sessionId?: string;  // Claude session ID (UUID) for --session-id or --resume
   resume?: boolean;    // If true, use --resume instead of --session-id
   chrome?: boolean;    // If true, enable Chrome integration with --chrome
@@ -544,6 +549,11 @@ export class ClaudeCli extends EventEmitter {
     // never writes the user's persisted Claude default.
     if (this.options.model) {
       args.push('--model', this.options.model);
+    }
+
+    // Stable per-chat agent name (what peer sessions use to address us).
+    if (this.options.agentName) {
+      args.push('--name', this.options.agentName);
     }
 
     // Resolve the effective permission mode. New `permissionMode` wins; legacy

@@ -338,6 +338,23 @@ export class MattermostClient extends BasePlatformClient {
     }
   }
 
+  async getChannelName(channelId: string): Promise<string | null> {
+    try {
+      const ch = await this.api<{ name: string; display_name: string; type: string }>('GET', `/channels/${channelId}`);
+      if (ch.type === 'D') {
+        // DM channel names are "<userA>__<userB>"; name it after the other side.
+        const other = ch.name.split('__').find(id => id !== this.botUserId);
+        const user = other ? await this.getUser(other) : null;
+        return user ? `dm-${user.username}` : 'dm';
+      }
+      if (ch.type === 'G') return ch.display_name || ch.name;
+      return ch.name || ch.display_name;
+    } catch (err) {
+      log.warn(`Failed to get channel name for ${channelId}: ${err}`);
+      return null;
+    }
+  }
+
   // Get user by username
   async getUserByUsername(username: string): Promise<PlatformUser | null> {
     try {

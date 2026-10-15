@@ -43,6 +43,8 @@ export function buildRestartCliOptions(
     channelId: session.channelId,
     // Carry the session's model across restarts (!cd, !permissions, worktree).
     model: session.modelOverride,
+    // Keep the chat's agent name across restarts (!cd, !permissions, worktree).
+    agentName: session.agentName,
     chrome: ctx.chromeEnabled,
     platformConfig: platformMcpConfig,
     logSessionId: session.sessionId,

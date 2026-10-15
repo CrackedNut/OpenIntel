@@ -503,3 +503,29 @@ describe('MattermostClient channel-target replies', () => {
     expect(body.root_id).toBeUndefined();
   });
 });
+
+describe('MattermostClient.getChannelName (agent name source)', () => {
+  it('returns the channel name for an open channel', async () => {
+    fetchResponder = (url) => url.endsWith('/channels/ch1')
+      ? jsonResponse({ id: 'ch1', name: 'nook-dev', display_name: 'Nook Dev', type: 'O' })
+      : jsonResponse({});
+    expect(await makeClient().getChannelName('ch1')).toBe('nook-dev');
+  });
+
+  it('names a DM after the other user, not the bot', async () => {
+    fetchResponder = (url) => {
+      if (url.endsWith('/users/me')) return jsonResponse({ id: 'bot1', username: 'natethropic' });
+      if (url.endsWith('/channels/dm1')) return jsonResponse({ id: 'dm1', name: 'bot1__u2', display_name: '', type: 'D' });
+      if (url.endsWith('/users/u2')) return jsonResponse({ id: 'u2', username: 'tixnow' });
+      return jsonResponse({});
+    };
+    const c = makeClient();
+    await c.getBotUser();
+    expect(await c.getChannelName('dm1')).toBe('dm-tixnow');
+  });
+
+  it('returns null when the lookup fails', async () => {
+    fetchResponder = () => jsonResponse({ message: 'nope' }, 404);
+    expect(await makeClient().getChannelName('missing')).toBeNull();
+  });
+});
