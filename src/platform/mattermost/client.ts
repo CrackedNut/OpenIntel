@@ -347,8 +347,10 @@ export class MattermostClient extends BasePlatformClient {
         const user = other ? await this.getUser(other) : null;
         return user ? `dm-${user.username}` : 'dm';
       }
-      if (ch.type === 'G') return ch.display_name || ch.name;
-      return ch.name || ch.display_name;
+      // Prefer the display name: it is what people see, and it follows renames
+      // (the URL `name` is fixed at creation — a channel made as "akamai" and
+      // renamed to "Account Gen" keeps name=akamai forever).
+      return ch.display_name || ch.name;
     } catch (err) {
       log.warn(`Failed to get channel name for ${channelId}: ${err}`);
       return null;

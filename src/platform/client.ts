@@ -102,7 +102,7 @@ export interface PlatformClient extends EventEmitter {
 
   /**
    * Human-readable name for a channel, used as the session's agent name.
-   * Public/private channels → their channel name (e.g. `nook-dev`);
+   * Public/private/group channels → their DISPLAY name (what users see);
    * DMs → `dm-<other username>`; group DMs → their display name.
    * Optional: platforms that don't implement it fall back to the
    * working-directory name. Returns null when the lookup fails.

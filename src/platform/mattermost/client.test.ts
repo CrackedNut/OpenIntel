@@ -505,9 +505,16 @@ describe('MattermostClient channel-target replies', () => {
 });
 
 describe('MattermostClient.getChannelName (agent name source)', () => {
-  it('returns the channel name for an open channel', async () => {
+  it('returns the display name (follows renames), not the fixed URL name', async () => {
     fetchResponder = (url) => url.endsWith('/channels/ch1')
-      ? jsonResponse({ id: 'ch1', name: 'nook-dev', display_name: 'Nook Dev', type: 'O' })
+      ? jsonResponse({ id: 'ch1', name: 'akamai', display_name: 'Account Gen', type: 'O' })
+      : jsonResponse({});
+    expect(await makeClient().getChannelName('ch1')).toBe('Account Gen');
+  });
+
+  it('falls back to the URL name when there is no display name', async () => {
+    fetchResponder = (url) => url.endsWith('/channels/ch1')
+      ? jsonResponse({ id: 'ch1', name: 'nook-dev', display_name: '', type: 'P' })
       : jsonResponse({});
     expect(await makeClient().getChannelName('ch1')).toBe('nook-dev');
   });
