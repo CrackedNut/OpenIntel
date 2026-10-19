@@ -396,6 +396,63 @@ cmd_panel() {
   fi
 }
 
+# Factory reset: stop every bot on this machine, move ALL bot state (every
+# profile under ~/openintel with a config.yaml, plus the legacy
+# ~/.config/claude-threads and ~/.claude-threads) into one timestamped backup
+# folder, then walk through setup for a single fresh profile. Nothing is
+# deleted — the backup restores by moving the folders back. The repo
+# checkout, build, snapshots and the ~/bin commands are left alone.
+cmd_reset() {
+  local self="$0" d name
+  local legacy_cfg="$HOME/.config/claude-threads" legacy_state="$HOME/.claude-threads"
+  local profiles=() items=()
+  for d in "$PROFILES_ROOT"/*/; do
+    [[ -f "$d/config.yaml" ]] || continue
+    name=$(basename "$d"); profiles+=("$name"); items+=("$PROFILES_ROOT/$name")
+  done
+  [[ -d "$legacy_cfg" ]] && items+=("$legacy_cfg")
+  [[ -d "$legacy_state" ]] && items+=("$legacy_state")
+
+  local backup="$HOME/openintel-backups/reset-$(date +%Y%m%d-%H%M%S)"
+  if [[ ${#items[@]} -eq 0 ]]; then
+    log "nothing to reset — no profiles or legacy install found"
+  else
+    printf '\n%sFactory reset%s — this stops every bot and moves its config,\n' "$YELLOW" "$RESET" >&2
+    printf 'tokens, sessions, persona/agent content and logs out of the way:\n' >&2
+    for d in "${items[@]}"; do printf '  %s\n' "$d" >&2; done
+    printf 'into: %s\n(nothing is deleted; move them back to undo)\n' "$backup" >&2
+    [[ -t 0 ]] || die "reset needs a terminal to confirm"
+    local answer
+    read -r -p "Type 'reset' to continue: " answer
+    [[ "$answer" == reset ]] || { log "cancelled"; return 0; }
+
+    for name in "${profiles[@]}"; do "$self" -p "$name" stop || true; done
+    if [[ -f "$legacy_cfg/config.yaml" || -f "$legacy_state/daemon.pid" ]]; then
+      PROFILE="" PID_FILE="$legacy_state/daemon.pid" BOT_LOG="$legacy_state/logs/bot.log" stop_bot || true
+    fi
+
+    mkdir -p "$backup"
+    for d in "${items[@]}"; do
+      case "$d" in
+        "$legacy_cfg")   mv "$d" "$backup/legacy-config" ;;
+        "$legacy_state") mv "$d" "$backup/legacy-state" ;;
+        *)               mv "$d" "$backup/$(basename "$d")" ;;
+      esac && log "  moved $d"
+    done
+    ok "reset — old state saved in $backup"
+  fi
+
+  [[ -t 0 ]] || return 0
+  local fresh
+  read -r -p "Name for the new bot profile (blank to stop here): " fresh
+  [[ -n "$fresh" ]] || { log "run \`$(basename "$self") -p <name> setup\` when ready"; return 0; }
+  [[ "$fresh" =~ ^[A-Za-z0-9._-]+$ ]] || die "profile name must be [A-Za-z0-9._-]"
+  mkdir -p "$PROFILES_ROOT/$fresh"
+  "$self" -p "$fresh" setup || return 1
+  [[ -f "$PROFILES_ROOT/$fresh/config.yaml" ]] || { warn "setup saved no config — profile not started"; return 0; }
+  "$self" -p "$fresh" start
+}
+
 cmd_setup() {
   require_repo
   command -v bun >/dev/null 2>&1 || die "bun not found — install from https://bun.sh"
@@ -568,19 +625,25 @@ cmd_wizard() {
         states+=("${YELLOW}stopped${RESET}")
       fi
     done
-    [[ ${#profiles[@]} -gt 0 ]] || die "no profiles at $PROFILES_ROOT — run \`$(basename "$0") setup\` or \`migrate <name>\` first"
+    if [[ ${#profiles[@]} -eq 0 ]]; then
+      if [[ -f "$HOME/.config/claude-threads/config.yaml" ]]; then
+        die "found an old single-bot install but no profiles — run \`$(basename "$0") migrate <name>\` to keep it, or \`$(basename "$0") reset\` to start fresh"
+      fi
+      die "no profiles at $PROFILES_ROOT — run \`$(basename "$0") reset\` (or \`-p <name> setup\`) to create one"
+    fi
 
     printf '\n%sOpenIntel%s — pick a bot:\n' "$BLUE" "$RESET" >&2
     local i
     for i in "${!profiles[@]}"; do
       printf '  %d) %-18s %b\n' $((i + 1)) "${profiles[i]}" "${states[i]}" >&2
     done
-    printf '  a) all bots\n  q) quit\n' >&2
+    printf '  a) all bots\n  r) factory reset (back up everything, start fresh)\n  q) quit\n' >&2
     local pick
     read -r -p "> " pick || return 0
     case "$pick" in
       q|Q|'') return 0 ;;
       a|A) wizard_actions all "${profiles[@]}" ;;
+      r|R) "$self" reset; return 0 ;;
       *)
         if [[ "$pick" =~ ^[0-9]+$ ]] && (( pick >= 1 && pick <= ${#profiles[@]} )); then
           wizard_actions "${profiles[pick-1]}"
@@ -662,6 +725,8 @@ commands:
   panel              open the agent dashboard
   logs               tail the bot log
   migrate <name>     move a legacy install into profile ~/openintel/<name>
+  reset              factory reset: stop all bots, back up ALL their state, set up fresh
+                     (also: setup --reset, or "r" in the wizard)
   profiles           list profiles and their daemon state
   wizard             interactive menu (also runs on a bare \`$(basename "$0")\` in a terminal)
   chat               chat with a bot in the terminal (platform-down fallback)
@@ -702,8 +767,9 @@ main() {
   # Resolve the profile now that flags are parsed. help/usage and `profiles`
   # are profile-agnostic — they must work (not die on ambiguity) with any
   # number of profiles present.
+  [[ "$sub" == setup && "${1:-}" == --reset ]] && { sub=reset; shift; }
   case "$sub" in
-    -h|--help|help|""|profiles|wizard|chat) ;;
+    -h|--help|help|""|profiles|wizard|chat|reset) ;;
     *) apply_profile ;;
   esac
   case "$sub" in
@@ -719,6 +785,7 @@ main() {
     list|ls)              cmd_list ;;
     status|st)            cmd_status ;;
     migrate)              cmd_migrate "$@" ;;
+    reset|factory-reset)  cmd_reset ;;
     profiles)             cmd_profiles ;;
     wizard)               cmd_wizard ;;
     chat)                 cmd_chat "$@" ;;

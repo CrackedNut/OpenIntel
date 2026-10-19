@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.13] - 2026-10-18
+
+### Added
+- **Factory reset — `openintel reset`** (also `openintel setup --reset`, or `r` in the wizard). Lists everything it will touch and asks you to type `reset`; then stops every bot on the machine, moves ALL bot state (every profile under `~/openintel` with a `config.yaml`, plus the legacy `~/.config/claude-threads` and `~/.claude-threads`) into `~/openintel-backups/reset-<timestamp>/`, and walks through setup + start for one fresh profile. Nothing is deleted. The repo, build, snapshots and `~/bin` commands are left alone.
+- The wizard's no-profiles error now points at `migrate <name>` (when an old single-bot install exists) or `reset`.
+
 ## [2.3.12] - 2026-10-18
 
 ### Fixed
