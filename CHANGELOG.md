@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.12] - 2026-10-18
+
+### Fixed
+- **`openintel install` and the dashboard's Update button now refresh the `openintel` / `claude-threads` command itself.** `install.sh` copied the manager script into `~/bin` once and nothing updated it again, so a machine could run the latest bot while its command stayed at first-install (e.g. a bare `openintel` showing usage instead of the 2.3.10 wizard). Install now re-copies the script from the pulled checkout over every existing copy in `~/bin` (override with `CLAUDE_THREADS_BIN_DIR`), keeping the pinned `DEFAULT_REF`. Machines on an older manager pick this up from their second update, or immediately by running `bash ~/code/claude-threads-agent/scripts/claude-threads-install.sh install main` once.
+
 ## [2.3.11] - 2026-08-11
 
 ### Added

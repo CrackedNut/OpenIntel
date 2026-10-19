@@ -27,6 +27,7 @@ set -euo pipefail
 
 REPO="${CLAUDE_THREADS_REPO:-$HOME/code/claude-threads-agent}"
 SNAPSHOTS="${CLAUDE_THREADS_SNAPSHOTS:-$HOME/.claude-threads-snapshots}"
+BIN_DIR="${CLAUDE_THREADS_BIN_DIR:-$HOME/bin}"
 DEFAULT_REF="${CLAUDE_THREADS_DEFAULT_REF:-main}"
 
 DAEMON_BIN="$REPO/bin/claude-threads-daemon"
@@ -409,6 +410,28 @@ cmd_setup() {
   fi
 }
 
+# Re-copy this manager script from the freshly pulled checkout over every
+# installed copy in $BIN_DIR. install.sh copies it there once; without this,
+# `install` (and the panel's Update button) updated the bot but left the
+# command on PATH frozen at first-install, so new subcommands never arrived.
+# Only refreshes copies that already exist, re-pins DEFAULT_REF like
+# install.sh does, and replaces via mv so a copy bash is executing right now
+# keeps reading its old inode.
+refresh_manager() {
+  local ref="$1" src="$REPO/scripts/claude-threads-install.sh" name dest tmp n=0
+  [[ -f "$src" ]] || { warn "manager source missing ($src) — not refreshing $BIN_DIR"; return 0; }
+  for name in claude-threads claude-threads-install.sh openintel; do
+    dest="$BIN_DIR/$name"
+    [[ -f "$dest" ]] || continue
+    tmp="$(mktemp "$BIN_DIR/.$name.XXXXXX")" || { warn "could not refresh $dest"; continue; }
+    sed "s|^DEFAULT_REF=.*|DEFAULT_REF=\"\${CLAUDE_THREADS_DEFAULT_REF:-$ref}\"|" "$src" > "$tmp" \
+      && chmod 755 "$tmp" && mv -f "$tmp" "$dest" && n=$((n + 1)) \
+      || { rm -f "$tmp"; warn "could not refresh $dest"; }
+  done
+  (( n > 0 )) && ok "refreshed $n manager command(s) in $BIN_DIR"
+  return 0
+}
+
 cmd_install() {
   require_repo
   local ref="${1:-$DEFAULT_REF}"
@@ -424,6 +447,7 @@ cmd_install() {
   git -C "$REPO" checkout "$ref"
   # ff-only pull if the ref is a local branch tracking a remote.
   git -C "$REPO" pull --ff-only 2>/dev/null || true
+  refresh_manager "$ref"
   log "installing deps (bun)..."
   ( cd "$REPO" && bun install )
   log "building..."
