@@ -996,7 +996,7 @@ export async function showModelPicker(
     : 'React with a number. This session only — your default is never touched.';
   const body = `${header}\n${list}\n${formatter.formatItalic(footer)}`;
 
-  // One reaction per choice (1️⃣…5️⃣). Reply target is the session thread/channel.
+  // One reaction per choice (1️⃣…🔟). Reply target is the session thread/channel.
   const reactions = [...NUMBER_EMOJIS].slice(0, choices.length);
   const replyTo = session.mode === 'channel' ? session.channelId : session.threadId;
   const picker = await session.platform.createInteractivePost(body, reactions, replyTo);

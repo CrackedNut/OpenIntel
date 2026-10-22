@@ -33,6 +33,11 @@ const SHORTCODE_TO_UNICODE: Record<string, string> = {
   three: '3️⃣',
   four: '4️⃣',
   five: '5️⃣',
+  six: '6️⃣',
+  seven: '7️⃣',
+  eight: '8️⃣',
+  nine: '9️⃣',
+  keycap_ten: '🔟',
 };
 
 // Reverse map. Where several shortcodes share a glyph, the first wins — it's

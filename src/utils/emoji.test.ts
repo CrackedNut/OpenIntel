@@ -194,9 +194,17 @@ describe('emoji helpers', () => {
       expect(getNumberEmojiIndex('5️⃣')).toBe(4);
     });
 
+    it('maps six through ten (names and unicode) for the 10-choice model picker', () => {
+      expect(getNumberEmojiIndex('six')).toBe(5);
+      expect(getNumberEmojiIndex('keycap_ten')).toBe(9);
+      expect(getNumberEmojiIndex('9️⃣')).toBe(8);
+      expect(getNumberEmojiIndex('🔟')).toBe(9);
+    });
+
     it('returns -1 for non-number emojis', () => {
       expect(getNumberEmojiIndex('heart')).toBe(-1);
-      expect(getNumberEmojiIndex('six')).toBe(-1);
+      expect(getNumberEmojiIndex('zero')).toBe(-1);
+      expect(getNumberEmojiIndex('eleven')).toBe(-1);
       expect(getNumberEmojiIndex('+1')).toBe(-1);
     });
 

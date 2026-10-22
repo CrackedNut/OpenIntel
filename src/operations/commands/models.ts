@@ -11,8 +11,9 @@
  * newest model per family) using the same OAuth credential the spawned
  * Claude CLI runs on, so a newly released model shows up without a deploy.
  * On any failure (no credential, offline, API error) the picker falls back
- * to the static FALLBACK_MODEL_CHOICES below. Keep the result ≤ 5 (we only
- * post 1️⃣–5️⃣).
+ * to the static FALLBACK_MODEL_CHOICES below. Pinned older Opus versions
+ * (OLDER_OPUS_CHOICES) are appended to either list. Keep the result ≤ 10 (we
+ * only post 1️⃣–🔟).
  */
 
 import { execFile } from 'child_process';
@@ -40,14 +41,47 @@ export interface ModelChoice {
 // which also means you can't switch a >~200k-token session TO them (a context
 // reality, not a bug).
 
-/** Static fallback when the live model list can't be fetched. */
-export const FALLBACK_MODEL_CHOICES: ModelChoice[] = [
+/**
+ * Older Opus versions offered after the newest-per-family picks, newest
+ * first. Each was checked live with `claude -p --model <value>` (2026-10-21):
+ * 5 / 4.8 / 4.7 / 4.6 answer on their [1m] tier; 4.5's [1m] tier is refused
+ * ("long context beta is not yet available"), so it's standard-window only.
+ * 4.1 and 4.0 are NOT here: Claude Code silently remaps them to the latest
+ * Opus, and with the remap disabled they're refused / retired.
+ */
+export const OLDER_OPUS_CHOICES: ModelChoice[] = [
+  { label: 'Opus 5', value: 'claude-opus-5[1m]' },
   { label: 'Opus 4.8', value: 'claude-opus-4-8[1m]' },
+  { label: 'Opus 4.7', value: 'claude-opus-4-7[1m]' },
+  { label: 'Opus 4.6', value: 'claude-opus-4-6[1m]' },
+  { label: 'Opus 4.5', value: 'claude-opus-4-5' },
+];
+
+/** Max picker entries — one per number reaction (1️⃣–🔟). */
+const MAX_CHOICES = 10;
+
+/**
+ * Insert the pinned older Opus versions just before "Default (inherit)",
+ * skipping any already in the list (e.g. when one IS the newest Opus).
+ */
+export function withOlderOpus(choices: ModelChoice[]): ModelChoice[] {
+  const present = new Set(choices.map((c) => c.value?.replace(/\[1m\]$/, '')));
+  const extra = OLDER_OPUS_CHOICES.filter((c) => !present.has(c.value?.replace(/\[1m\]$/, '')));
+  const at = choices.findIndex((c) => c.value === null);
+  const head = at === -1 ? choices : choices.slice(0, at);
+  const tail = at === -1 ? [] : choices.slice(at);
+  const keep = MAX_CHOICES - head.length - tail.length;
+  return [...head, ...extra.slice(0, Math.max(0, keep)), ...tail];
+}
+
+/** Static fallback when the live model list can't be fetched. */
+export const FALLBACK_MODEL_CHOICES: ModelChoice[] = withOlderOpus([
+  { label: 'Opus 5.5', value: 'claude-opus-5-5[1m]' },
   { label: 'Sonnet 4.6', value: 'sonnet' },
   { label: 'Haiku 4.5', value: 'haiku' },
   { label: 'Fable 5', value: 'claude-fable-5[1m]' },
   { label: 'Default (inherit)', value: null },
-];
+]);
 
 /** The model families the picker surfaces, in display order. */
 const FAMILY_ORDER = ['opus', 'sonnet', 'haiku', 'fable'] as const;
@@ -86,7 +120,7 @@ export function buildModelChoices(models: ApiModel[]): ModelChoice[] {
     });
   }
   choices.push({ label: 'Default (inherit)', value: null });
-  return choices.slice(0, 5);
+  return withOlderOpus(choices.slice(0, 5));
 }
 
 /** Extract the OAuth access token from Claude CLI credential JSON. Pure. */
@@ -159,8 +193,10 @@ export async function fetchLiveModelChoices(
   if (!Array.isArray(body.data)) throw new Error('unexpected models API response');
 
   const choices = buildModelChoices(body.data);
-  // A usable picker needs at least one real model plus "Default".
-  if (choices.length < 2) throw new Error('no recognizable models in API response');
+  // A usable picker needs at least one model from the API itself — the pinned
+  // older Opus entries are added even when the API list is empty.
+  const pinned = new Set(OLDER_OPUS_CHOICES.map((c) => c.value));
+  if (!choices.some((c) => c.value !== null && !pinned.has(c.value))) throw new Error('no recognizable models in API response');
   return choices;
 }
 

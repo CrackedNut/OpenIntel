@@ -8,7 +8,9 @@ import {
   parseCredentialsJson,
   fetchLiveModelChoices,
   modelLabel,
+  withOlderOpus,
   FALLBACK_MODEL_CHOICES,
+  OLDER_OPUS_CHOICES,
   type ApiModel,
 } from './models.js';
 
@@ -25,13 +27,18 @@ const LIVE_MODELS: ApiModel[] = [
 ];
 
 describe('buildModelChoices', () => {
-  it('picks the newest model per family in display order, plus Default', () => {
+  it('picks the newest model per family, then the older Opus versions, then Default', () => {
     const choices = buildModelChoices(LIVE_MODELS);
+    // Opus 5 is the newest Opus here, so the pinned 'Opus 5' entry is not repeated.
     expect(choices.map((c) => c.label)).toEqual([
       'Opus 5',
       'Sonnet 5',
       'Haiku 4.5',
       'Fable 5',
+      'Opus 4.8',
+      'Opus 4.7',
+      'Opus 4.6',
+      'Opus 4.5',
       'Default (inherit)',
     ]);
   });
@@ -46,8 +53,9 @@ describe('buildModelChoices', () => {
     expect(byLabel['Default (inherit)']).toBeNull();
   });
 
-  it('never exceeds 5 choices (the 1️⃣–5️⃣ reaction limit)', () => {
-    expect(buildModelChoices(LIVE_MODELS).length).toBeLessThanOrEqual(5);
+  it('never exceeds 10 choices (the 1️⃣–🔟 reaction limit)', () => {
+    expect(buildModelChoices(LIVE_MODELS).length).toBeLessThanOrEqual(10);
+    expect(FALLBACK_MODEL_CHOICES.length).toBeLessThanOrEqual(10);
   });
 
   it('skips families with no models and ignores unknown ids', () => {
@@ -55,7 +63,47 @@ describe('buildModelChoices', () => {
       { id: 'claude-sonnet-5', display_name: 'Claude Sonnet 5', created_at: '2026-06-29T00:00:00Z' },
       { id: 'some-unrelated-model', display_name: 'Other', created_at: '2026-07-01T00:00:00Z' },
     ]);
-    expect(choices.map((c) => c.label)).toEqual(['Sonnet 5', 'Default (inherit)']);
+    expect(choices.map((c) => c.label)).toEqual([
+      'Sonnet 5',
+      ...OLDER_OPUS_CHOICES.map((c) => c.label),
+      'Default (inherit)',
+    ]);
+  });
+});
+
+describe('withOlderOpus', () => {
+  it('lists Opus 5, 4.8, 4.7, 4.6 on the [1m] tier and 4.5 standard-window', () => {
+    expect(OLDER_OPUS_CHOICES.map((c) => c.value)).toEqual([
+      'claude-opus-5[1m]',
+      'claude-opus-4-8[1m]',
+      'claude-opus-4-7[1m]',
+      'claude-opus-4-6[1m]',
+      'claude-opus-4-5',
+    ]);
+  });
+
+  it('inserts before Default and skips versions already listed, with or without [1m]', () => {
+    const out = withOlderOpus([
+      { label: 'Opus 4.8', value: 'claude-opus-4-8' },
+      { label: 'Default (inherit)', value: null },
+    ]);
+    expect(out.map((c) => c.label)).toEqual([
+      'Opus 4.8', 'Opus 5', 'Opus 4.7', 'Opus 4.6', 'Opus 4.5', 'Default (inherit)',
+    ]);
+  });
+
+  it('trims the pinned extras (never the live picks or Default) to stay within 10', () => {
+    const live = Array.from({ length: 7 }, (_, i) => ({ label: `M${i}`, value: `m-${i}` }));
+    const out = withOlderOpus([...live, { label: 'Default (inherit)', value: null }]);
+    expect(out.length).toBe(10);
+    expect(out.slice(0, 7)).toEqual(live);
+    expect(out[9].value).toBeNull();
+  });
+
+  it('the fallback list carries the older Opus versions too', () => {
+    const values = FALLBACK_MODEL_CHOICES.map((c) => c.value);
+    for (const c of OLDER_OPUS_CHOICES) expect(values).toContain(c.value);
+    expect(values[values.length - 1]).toBeNull();
   });
 });
 
@@ -113,7 +161,7 @@ describe('fetchLiveModelChoices', () => {
     ).rejects.toThrow('models API request failed');
   });
 
-  it('throws when the response has no recognizable models', async () => {
+  it('throws when the API returns no recognizable models (pinned extras do not count)', async () => {
     await expect(
       fetchLiveModelChoices(stubFetch({ data: [] }), async () => 'tok'),
     ).rejects.toThrow('no recognizable models');
@@ -131,7 +179,7 @@ describe('modelLabel', () => {
   });
 
   it('derives a readable label for unknown raw ids', () => {
-    expect(modelLabel('claude-opus-5[1m]')).toBe('opus 5');
+    expect(modelLabel('claude-opus-9[1m]')).toBe('opus 9');
     expect(modelLabel('claude-sonnet-9')).toBe('sonnet 9');
   });
 });

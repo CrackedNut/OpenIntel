@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.14] - 2026-10-21
+
+### Added
+- **`!model` offers older Opus versions.** After the newest model per family, the picker now lists Opus 5, 4.8, 4.7, 4.6 (1M context) and Opus 4.5 (standard window — its 1M tier is refused on this subscription). Each was checked live with `claude -p --model`. Opus 4.1/4.0 are left out: Claude Code silently remaps them to the latest Opus. The picker grows from 5 to up to 10 choices (1️⃣–🔟); number reactions six–ten are now recognised on every platform, and every other number picker still ignores numbers beyond its own options.
+
 ## [2.3.13] - 2026-10-18
 
 ### Added
